@@ -13,7 +13,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(nequip,PairDICE)
+PairStyle(dice,PairDICE)
 
 #else
 

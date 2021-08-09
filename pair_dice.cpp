@@ -180,55 +180,11 @@ void PairDICE::compute(int eflag, int vflag){
 
   torch::Tensor pos_tensor = torch::zeros({nlocal, 3});
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
-  torch::Tensor edge_cell_shifts_tensor = torch::zeros({nedges,3});
-  torch::Tensor tag2type_tensor = torch::zeros({nlocal}, torch::TensorOptions().dtype(torch::kInt64));
-  torch::Tensor periodic_shift_tensor = torch::zeros({3});
-  torch::Tensor cell_tensor = torch::zeros({3,3});
+  torch::Tensor i2type_tensor = torch::zeros({nlocal}, torch::TensorOptions().dtype(torch::kInt64));
 
   auto pos = pos_tensor.accessor<float, 2>();
   auto edges = edges_tensor.accessor<long, 2>();
-  auto edge_cell_shifts = edge_cell_shifts_tensor.accessor<float, 2>();
-  auto tag2type = tag2type_tensor.accessor<long, 1>();
-  auto periodic_shift = periodic_shift_tensor.accessor<float, 1>();
-  auto cell = cell_tensor.accessor<float,2>();
-
-  // Inverse mapping from tag to "real" atom index
-  std::vector<int> tag2i(inum);
-
-  // Loop over real atoms to store tags, types and positions
-  for(int ii = 0; ii < inum; ii++){
-    int i = ilist[ii];
-    int itag = tag[i];
-    int itype = type[i];
-
-    // Inverse mapping from tag to x/f atom index
-    tag2i[itag-1] = i; // tag is probably 1-based
-    tag2type[itag-1] = itype-1;
-    pos[itag-1][0] = x[i][0];
-    pos[itag-1][1] = x[i][1];
-    pos[itag-1][2] = x[i][2];
-  }
-
-  // Get cell
-  cell[0][0] = domain->boxhi[0] - domain->boxlo[0];
-
-  cell[1][0] = domain->xy;
-  cell[1][1] = domain->boxhi[1] - domain->boxlo[1];
-
-  cell[2][0] = domain->xz;
-  cell[2][1] = domain->yz;
-  cell[2][2] = domain->boxhi[2] - domain->boxlo[2];
-
-  /*
-  std::cout << "cell: " << cell_tensor << "\n";
-  std::cout << "tag2i: " << "\n";
-  for(int itag = 0; itag < inum; itag++){
-    std::cout << tag2i[itag] << " ";
-  }
-  std::cout << std::endl;
-  */
-
-  auto cell_inv = cell_tensor.inverse().transpose(0,1);
+  auto i2type = i2type_tensor.accessor<long, 1>();
 
   // Loop over atoms and neighbors,
   // store edges and _cell_shifts
@@ -240,6 +196,12 @@ void PairDICE::compute(int eflag, int vflag){
     int itag = tag[i];
     int itype = type[i];
 
+    i2type[i] = itype - 1;
+
+    pos[i][0] = x[i][0];
+    pos[i][1] = x[i][1];
+    pos[i][2] = x[i][2];
+
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
     for(int jj = 0; jj < jnum; jj++){
@@ -248,11 +210,6 @@ void PairDICE::compute(int eflag, int vflag){
       int jtag = tag[j];
       int jtype = type[j];
 
-      // TODO: check sign
-      periodic_shift[0] = x[j][0] - pos[jtag-1][0];
-      periodic_shift[1] = x[j][1] - pos[jtag-1][1];
-      periodic_shift[2] = x[j][2] - pos[jtag-1][2];
-
       double dx = x[i][0] - x[j][0];
       double dy = x[i][1] - x[j][1];
       double dz = x[i][2] - x[j][2];
@@ -260,31 +217,20 @@ void PairDICE::compute(int eflag, int vflag){
       double rsq = dx*dx + dy*dy + dz*dz;
       assert(rsq < cutoff*cutoff);
 
-      torch::Tensor cell_shift_tensor = cell_inv.matmul(periodic_shift_tensor);
-      auto cell_shift = cell_shift_tensor.accessor<float, 1>();
-      edge_cell_shifts[edge_counter][0] = std::round(cell_shift[0]);
-      edge_cell_shifts[edge_counter][1] = std::round(cell_shift[1]);
-      edge_cell_shifts[edge_counter][2] = std::round(cell_shift[2]);
-      //std::cout << "cell shift: " << cell_shift_tensor << "\n";
-
       // TODO: double check order
-      edges[0][edge_counter] = itag - 1; // tag is probably 1-based
-      edges[1][edge_counter] = jtag - 1; // tag is probably 1-based
+      edges[0][edge_counter] = i;
+      edges[1][edge_counter] = j;
 
       edge_counter++;
     }
   }
 
-  //std::cout << "tag2type: " << tag2type_tensor << "\n";
   //std::cout << "Edges: " << edges_tensor << "\n";
-  //std::cout << "Edge _cell_shifts: " << edge_cell_shifts_tensor << "\n";
 
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
   input.insert("edge_index", edges_tensor.to(device));
-  input.insert("edge_cell_shift", edge_cell_shifts_tensor.to(device));
-  input.insert("cell", cell_tensor.to(device));
-  input.insert("species_index", tag2type_tensor.to(device));
+  input.insert("species_index", i2type_tensor.to(device));
   std::vector<torch::IValue> input_vector(1, input);
 
   auto output = model.forward(input_vector).toGenericDict();
@@ -301,32 +247,19 @@ void PairDICE::compute(int eflag, int vflag){
   auto atomic_energies = atomic_energy_tensor.accessor<float, 2>();
   float atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<float>()[0];
 
-  //std::cout << "atomic energy sum: " << atomic_energy_sum << std::endl;
-  //std::cout << "Total energy: " << total_energy_tensor << "\n";
+  std::cout << "atomic energy sum: " << atomic_energy_sum << std::endl;
+  std::cout << "Total energy: " << total_energy_tensor << "\n";
   //std::cout << "atomic energy shape: " << atomic_energy_tensor.sizes()[0] << "," << atomic_energy_tensor.sizes()[1] << std::endl;
   //std::cout << "atomic energies: " << atomic_energy_tensor << std::endl;
 
   // Write forces and per-atom energies (0-based tags here)
-  for(int itag = 0; itag < inum; itag++){
-    int i = tag2i[itag];
-    f[i][0] = forces[itag][0];
-    f[i][1] = forces[itag][1];
-    f[i][2] = forces[itag][2];
-    if (eflag_atom) eatom[i] = atomic_energies[itag][0];
-    //printf("%d %d %g %g %g %g %g %g\n", i, type[i], pos[itag][0], pos[itag][1], pos[itag][2], f[i][0], f[i][1], f[i][2]);
+  for(int ii = 0; ii < ntotal; ii++){
+    int i = ilist[ii];
+
+    f[i][0] = forces[i][0];
+    f[i][1] = forces[i][1];
+    f[i][2] = forces[i][2];
+    if (eflag_atom) eatom[i] = atomic_energies[i][0];
   }
 
-  // TODO: Virial stuff? (If there even is a pairwise force concept here)
-
-  // TODO: Performance: Depending on how the graph network works, using tags for edges may lead to shitty memory access patterns and performance.
-  // It may be better to first create tag2i as a separate loop, then set edges[edge_counter][:] = (i, tag2i[jtag]).
-  // Then use forces(i,0) instead of forces(itag,0).
-  // Or just sort the edges somehow.
-
-  /*
-  if(device.is_cuda()){
-    //torch::cuda::empty_cache();
-    c10::cuda::CUDACachingAllocator::emptyCache();
-  }
-  */
 }
