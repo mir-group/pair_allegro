@@ -158,7 +158,7 @@ void PairDICE::compute(int eflag, int vflag){
   // Number of local/real atoms
   int nlocal = atom->nlocal;
   // Whether Newton is on (i.e. reverse "communication" of forces on ghost atoms).
-  // Should probably be off.
+  // Should be on.
   int newton_pair = force->newton_pair;
 
   // Number of local/real atoms
@@ -178,13 +178,13 @@ void PairDICE::compute(int eflag, int vflag){
   // Total number of bonds (sum of number of neighbors)
   int nedges = std::accumulate(numneigh, numneigh+ntotal, 0);
 
-  torch::Tensor pos_tensor = torch::zeros({nlocal, 3});
+  torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
-  torch::Tensor i2type_tensor = torch::zeros({nlocal}, torch::TensorOptions().dtype(torch::kInt64));
+  torch::Tensor ij2type_tensor = torch::zeros({ntotal}, torch::TensorOptions().dtype(torch::kInt64));
 
   auto pos = pos_tensor.accessor<float, 2>();
   auto edges = edges_tensor.accessor<long, 2>();
-  auto i2type = i2type_tensor.accessor<long, 1>();
+  auto ij2type = ij2type_tensor.accessor<long, 1>();
 
   // Loop over atoms and neighbors,
   // store edges and _cell_shifts
@@ -196,7 +196,7 @@ void PairDICE::compute(int eflag, int vflag){
     int itag = tag[i];
     int itype = type[i];
 
-    i2type[i] = itype - 1;
+    ij2type[i] = itype - 1;
 
     pos[i][0] = x[i][0];
     pos[i][1] = x[i][1];
@@ -230,7 +230,7 @@ void PairDICE::compute(int eflag, int vflag){
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
   input.insert("edge_index", edges_tensor.to(device));
-  input.insert("species_index", i2type_tensor.to(device));
+  input.insert("species_index", ij2type_tensor.to(device));
   std::vector<torch::IValue> input_vector(1, input);
 
   auto output = model.forward(input_vector).toGenericDict();
