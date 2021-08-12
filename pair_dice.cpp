@@ -35,7 +35,6 @@
 #include <iostream>
 #include <string>
 #include <torch/script.h>
-#include <c10/cuda/CUDACachingAllocator.h>
 
 
 using namespace LAMMPS_NS;
@@ -176,7 +175,7 @@ void PairDICE::compute(int eflag, int vflag){
   int **firstneigh = list->firstneigh;
 
   // Total number of bonds (sum of number of neighbors)
-  int nedges = std::accumulate(numneigh, numneigh+ntotal, 0);
+  int nedges = std::accumulate(numneigh, numneigh+nlocal, 0);
 
   torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
@@ -201,6 +200,8 @@ void PairDICE::compute(int eflag, int vflag){
     pos[i][0] = x[i][0];
     pos[i][1] = x[i][1];
     pos[i][2] = x[i][2];
+
+    if(ii >= nlocal){continue;}
 
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
