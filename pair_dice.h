@@ -23,6 +23,7 @@ PairStyle(dice,PairDICE)
 #include "pair.h"
 
 #include <torch/torch.h>
+#include <vector>
 
 namespace LAMMPS_NS {
 
@@ -40,6 +41,9 @@ class PairDICE : public Pair {
   double cutoff;
   torch::jit::Module model;
   torch::Device device = torch::kCPU;
+  std::vector<int> type_mapper;
+
+  int batch_size = -1;
 
 
 };

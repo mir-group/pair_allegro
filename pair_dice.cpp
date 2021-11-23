@@ -33,8 +33,10 @@
 #include <numeric>
 #include <cassert>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <torch/script.h>
+#include <torch/csrc/jit/runtime/graph_executor.h>
 
 
 using namespace LAMMPS_NS;
@@ -89,7 +91,7 @@ void PairDICE::allocate()
 }
 
 void PairDICE::settings(int narg, char ** /*arg*/) {
-  // "flare" should be the only word after "pair_style" in the input file.
+  // "dice" should be the only word after "pair_style" in the input file.
   if (narg > 0)
     error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
@@ -98,45 +100,111 @@ void PairDICE::coeff(int narg, char **arg) {
   if (!allocated)
     allocate();
 
+  int ntypes = atom->ntypes;
+
   // Should be exactly 3 arguments following "pair_coeff" in the input file.
-  if (narg != 3)
-    error->all(FLERR, "Incorrect args for pair coefficients");
+  if (narg != (3+ntypes))
+    error->all(FLERR, "Incorrect args for pair coefficients, should be * * <model>.pth <type1> <type2> ... <typen>");
 
   // Ensure I,J args are "* *".
   if (strcmp(arg[0], "*") != 0 || strcmp(arg[1], "*") != 0)
     error->all(FLERR, "Incorrect args for pair coefficients");
 
-  int n = atom->ntypes;
-  for (int i = 1; i <= n; i++)
-    for (int j = i; j <= n; j++)
+  for (int i = 1; i <= ntypes; i++)
+    for (int j = i; j <= ntypes; j++)
       setflag[i][j] = 0;
 
-  // set setflag i,j for type pairs where both are mapped to elements
+  std::vector<std::string> elements(ntypes);
+  for(int i = 0; i < ntypes; i++){
+    elements[i] = arg[i+1];
+  }
 
-  int count = 0;
-  for (int i = 1; i <= n; i++)
-    for (int j = i; j <= n; j++)
-        setflag[i][j] = 1;
-
-  std::cout << "Loading model from " << arg[2] << "\n";
+  std::cout << "DICE: Loading model from " << arg[2] << "\n";
 
   std::unordered_map<std::string, std::string> metadata = {
     {"config", ""},
     {"nequip_version", ""},
     {"r_max", ""},
-    {"n_species", ""}
+    {"n_species", ""},
+    {"type_names", ""},
+    {"_jit_bailout_depth", ""},
+    {"allow_tf32", ""}
   };
   model = torch::jit::load(std::string(arg[2]), device, metadata);
 
-  std::cout << "Information from model: " << metadata.size() << " key-value pairs\n";
-  for( const auto& n : metadata ) {
-    std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
+  // Check if model is a NequIP model
+  if (metadata["nequip_version"].empty()) {
+    error->all(FLERR, "The indicated TorchScript file does not appear to be a deployed NequIP model; did you forget to run `nequip-deploy`?");
   }
+
+  // Set JIT bailout to avoid long recompilations for many steps
+  size_t jit_bailout_depth;
+  if (metadata["_jit_bailout_depth"].empty()) {
+    // This is the default used in the Python code
+    jit_bailout_depth = 2;
+  } else {
+    jit_bailout_depth = std::stoi(metadata["_jit_bailout_depth"]);
+  }
+  torch::jit::getBailoutDepth() = jit_bailout_depth;
+
+  // Set whether to allow TF32:
+  bool allow_tf32;
+  if (metadata["allow_tf32"].empty()) {
+    // Better safe then sorry
+    allow_tf32 = false;
+  } else {
+    // It gets saved as an int 0/1
+    allow_tf32 = std::stoi(metadata["allow_tf32"]);
+  }
+  // See https://pytorch.org/docs/stable/notes/cuda.html
+  at::globalContext().setAllowTF32CuBLAS(allow_tf32);
+  at::globalContext().setAllowTF32CuDNN(allow_tf32);
+
+  // If the model is not already frozen, we should freeze it:
+  if (model.parameters().size() > 0) {
+    std::cout << "Freezing TorchScript model...\n";
+    // It still has parameters, so it's unfrozen.
+    // This isn't a perfect check, but should be correct for all real models.
+    model.eval();
+    model = torch::jit::freeze(model);
+  }
+
+  // std::cout << "DICE: Information from model: " << metadata.size() << " key-value pairs\n";
+  // for( const auto& n : metadata ) {
+  //   std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
+  // }
 
   cutoff = std::stod(metadata["r_max"]);
 
-  // TODO: Make remaining arguments species-mapping
-  // See SW.
+  //TODO: This
+  type_mapper.resize(ntypes);
+  std::stringstream ss;
+  int n_species = std::stod(metadata["n_species"]);
+  ss << metadata["type_names"];
+  std::cout << "Type mapping:" << "\n";
+  std::cout << "DICE type | DICE name | LAMMPS type | LAMMPS name" << "\n";
+  for (int i = 0; i < n_species; i++){
+    std::string ele;
+    ss >> ele;
+    for (int itype = 1; itype <= ntypes; itype++){
+      if (ele.compare(arg[itype + 3 - 1]) == 0){
+        type_mapper[itype-1] = i;
+        std::cout << i << " | " << ele << " | " << itype << " | " << arg[itype + 3 - 1] << "\n";
+      }
+    }
+  }
+
+  // set setflag i,j for type pairs where both are mapped to elements
+  for (int i = 1; i <= ntypes; i++)
+    for (int j = i; j <= ntypes; j++)
+        if ((type_mapper[i] >= 0) && (type_mapper[j] >= 0))
+            setflag[i][j] = 1;
+
+  char *batchstr = std::getenv("BATCHSIZE");
+  if (batchstr != NULL) {
+    batch_size = std::atoi(batchstr);
+  }
+
 }
 
 // Force and energy computation
@@ -195,7 +263,7 @@ void PairDICE::compute(int eflag, int vflag){
     int itag = tag[i];
     int itype = type[i];
 
-    ij2type[i] = itype - 1;
+    ij2type[i] = type_mapper[itype - 1];
 
     pos[i][0] = x[i][0];
     pos[i][1] = x[i][1];
@@ -216,7 +284,7 @@ void PairDICE::compute(int eflag, int vflag){
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx*dx + dy*dy + dz*dz;
-      assert(rsq < cutoff*cutoff);
+      if(rsq > cutoff*cutoff) {continue;}
 
       // TODO: double check order
       edges[0][edge_counter] = i;
@@ -226,12 +294,15 @@ void PairDICE::compute(int eflag, int vflag){
     }
   }
 
+  // shorten the tensor to the number of actual neighbors
+  edges_tensor = edges_tensor.index({torch::indexing::Ellipsis, torch::indexing::Slice(0,edge_counter)});
+
   //std::cout << "Edges: " << edges_tensor << "\n";
 
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
   input.insert("edge_index", edges_tensor.to(device));
-  input.insert("species_index", ij2type_tensor.to(device));
+  input.insert("atom_types", ij2type_tensor.to(device));
   std::vector<torch::IValue> input_vector(1, input);
 
   auto output = model.forward(input_vector).toGenericDict();
@@ -248,19 +319,20 @@ void PairDICE::compute(int eflag, int vflag){
   auto atomic_energies = atomic_energy_tensor.accessor<float, 2>();
   float atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<float>()[0];
 
-  std::cout << "atomic energy sum: " << atomic_energy_sum << std::endl;
-  std::cout << "Total energy: " << total_energy_tensor << "\n";
+  //std::cout << "atomic energy sum: " << atomic_energy_sum << std::endl;
+  //std::cout << "Total energy: " << total_energy_tensor << "\n";
   //std::cout << "atomic energy shape: " << atomic_energy_tensor.sizes()[0] << "," << atomic_energy_tensor.sizes()[1] << std::endl;
   //std::cout << "atomic energies: " << atomic_energy_tensor << std::endl;
 
   // Write forces and per-atom energies (0-based tags here)
+  eng_vdwl = 0.0;
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
 
     f[i][0] = forces[i][0];
     f[i][1] = forces[i][1];
     f[i][2] = forces[i][2];
-    if (eflag_atom) eatom[i] = atomic_energies[i][0];
+    if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
+    if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }
-
 }
