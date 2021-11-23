@@ -35,8 +35,28 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <torch/torch.h>
 #include <torch/script.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
+
+
+
+// We have to do a backward compatability hack for <1.10
+// https://discuss.pytorch.org/t/how-to-check-libtorch-version/77709/4
+// Basically, the check in torch::jit::freeze
+// (see https://github.com/pytorch/pytorch/blob/dfbd030854359207cb3040b864614affeace11ce/torch/csrc/jit/api/module.cpp#L479)
+// is wrong, and we have ro "reimplement" the function
+// to get around that...
+// it's broken in 1.8 and 1.9 so the < check is correct.
+// This appears to be fixed in 1.10. 
+#if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR < 10)
+  #define DO_TORCH_FREEZE_HACK
+  // For the hack, need more headers:
+  #include <torch/csrc/jit/passes/freeze_module.h>
+  #include <torch/csrc/jit/passes/frozen_conv_add_relu_fusion.h>
+  #include <torch/csrc/jit/passes/frozen_graph_optimizations.h>
+  #include <torch/csrc/jit/passes/frozen_ops_to_mkldnn.h>
+#endif
 
 
 using namespace LAMMPS_NS;
@@ -131,10 +151,34 @@ void PairDICE::coeff(int narg, char **arg) {
     {"allow_tf32", ""}
   };
   model = torch::jit::load(std::string(arg[2]), device, metadata);
+  model.eval();
 
   // Check if model is a NequIP model
   if (metadata["nequip_version"].empty()) {
     error->all(FLERR, "The indicated TorchScript file does not appear to be a deployed NequIP model; did you forget to run `nequip-deploy`?");
+  }
+
+  // If the model is not already frozen, we should freeze it:
+  // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
+  if (model.hasattr("training")) {
+    std::cout << "DICE: Freezing TorchScript model...\n";
+    #ifdef DO_TORCH_FREEZE_HACK
+      // Do the hack
+      // Copied from the implementation of torch::jit::freeze,
+      // except without the broken check
+      // See https://github.com/pytorch/pytorch/blob/dfbd030854359207cb3040b864614affeace11ce/torch/csrc/jit/api/module.cpp
+      bool optimize_numerics = true;  // the default
+      // the {} is preserved_attrs
+      auto out_mod = freeze_module(
+        model, {}
+      );
+      auto graph = model.get_method("forward").graph();
+      OptimizeFrozenGraph(graph, optimize_numerics);
+      model = out_mod;
+    #else
+      // Do it normally
+      model = torch::jit::freeze(model);
+    #endif
   }
 
   // Set JIT bailout to avoid long recompilations for many steps
@@ -150,7 +194,7 @@ void PairDICE::coeff(int narg, char **arg) {
   // Set whether to allow TF32:
   bool allow_tf32;
   if (metadata["allow_tf32"].empty()) {
-    // Better safe then sorry
+    // Better safe than sorry
     allow_tf32 = false;
   } else {
     // It gets saved as an int 0/1
@@ -159,15 +203,6 @@ void PairDICE::coeff(int narg, char **arg) {
   // See https://pytorch.org/docs/stable/notes/cuda.html
   at::globalContext().setAllowTF32CuBLAS(allow_tf32);
   at::globalContext().setAllowTF32CuDNN(allow_tf32);
-
-  // If the model is not already frozen, we should freeze it:
-  if (model.parameters().size() > 0) {
-    std::cout << "Freezing TorchScript model...\n";
-    // It still has parameters, so it's unfrozen.
-    // This isn't a perfect check, but should be correct for all real models.
-    model.eval();
-    model = torch::jit::freeze(model);
-  }
 
   // std::cout << "DICE: Information from model: " << metadata.size() << " key-value pairs\n";
   // for( const auto& n : metadata ) {
