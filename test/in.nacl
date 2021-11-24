@@ -37,11 +37,11 @@ compute totalatomicenergy all reduce sum c_atomicenergies
 
 thermo_style custom step time temp pe c_totalatomicenergy etotal press spcpu cpuremain
 
+thermo 1
 run 0
 write_dump all custom output.dump id type x y z fx fy fz c_atomicenergies modify sort id
 
-thermo 1
-#run 100000
+run 100000
 #
 #run 100
 #

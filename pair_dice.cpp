@@ -39,6 +39,9 @@
 #include <torch/script.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
 
+// TODO: Only if MPI is available
+#include <mpi.h>
+
 
 
 // We have to do a backward compatability hack for <1.10
@@ -48,7 +51,7 @@
 // is wrong, and we have ro "reimplement" the function
 // to get around that...
 // it's broken in 1.8 and 1.9 so the < check is correct.
-// This appears to be fixed in 1.10. 
+// This appears to be fixed in 1.10.
 #if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR < 10)
   #define DO_TORCH_FREEZE_HACK
   // For the hack, need more headers:
@@ -66,7 +69,16 @@ PairDICE::PairDICE(LAMMPS *lmp) : Pair(lmp) {
   manybody_flag = 1;
 
   if(torch::cuda::is_available()){
-    device = torch::kCUDA;
+    int deviceidx = -1;
+    if(comm->nprocs > 1){
+      MPI_Comm shmcomm;
+      MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
+          MPI_INFO_NULL, &shmcomm);
+      int shmrank;
+      MPI_Comm_rank(shmcomm, &shmrank);
+      deviceidx = shmrank;
+    }
+    device = c10::Device(torch::kCUDA,deviceidx);
   }
   else {
     device = torch::kCPU;
