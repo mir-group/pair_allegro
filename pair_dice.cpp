@@ -28,6 +28,8 @@
 #include "potential_file_reader.h"
 #include "tokenizer.h"
 
+#include <algorithm>
+#include <vector>
 #include <cmath>
 #include <cstring>
 #include <numeric>
@@ -289,8 +291,34 @@ void PairDICE::compute(int eflag, int vflag){
   // Neighbor list per atom
   int **firstneigh = list->firstneigh;
 
+
+  std::vector<int> neigh_per_atom(nlocal, 0);
+#pragma omp parallel for
+  for(int ii = 0; ii < nlocal; ii++){
+    int i = ilist[ii];
+
+    int jnum = numneigh[i];
+    int *jlist = firstneigh[i];
+    for(int jj = 0; jj < jnum; jj++){
+      int j = jlist[jj];
+      j &= NEIGHMASK;
+
+      double dx = x[i][0] - x[j][0];
+      double dy = x[i][1] - x[j][1];
+      double dz = x[i][2] - x[j][2];
+
+      double rsq = dx*dx + dy*dy + dz*dz;
+      if(rsq <= cutoff*cutoff) {
+        neigh_per_atom[ii]++;
+      }
+    }
+  }
+
   // Total number of bonds (sum of number of neighbors)
-  int nedges = std::accumulate(numneigh, numneigh+nlocal, 0);
+  int nedges = std::accumulate(neigh_per_atom.begin(), neigh_per_atom.end(), 0);
+
+  std::vector<int> cumsum_neigh_per_atom(nlocal);
+  std::exclusive_scan(neigh_per_atom.begin(), neigh_per_atom.end(), cumsum_neigh_per_atom.begin(), 0);
 
   torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
@@ -300,11 +328,12 @@ void PairDICE::compute(int eflag, int vflag){
   auto edges = edges_tensor.accessor<long, 2>();
   auto ij2type = ij2type_tensor.accessor<long, 1>();
 
+
   // Loop over atoms and neighbors,
   // store edges and _cell_shifts
   // ii follows the order of the neighbor lists,
   // i follows the order of x, f, etc.
-  int edge_counter = 0;
+#pragma omp parallel for
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
     int itag = tag[i];
@@ -320,6 +349,8 @@ void PairDICE::compute(int eflag, int vflag){
 
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
+
+    int edge_counter = cumsum_neigh_per_atom[ii];
     for(int jj = 0; jj < jnum; jj++){
       int j = jlist[jj];
       j &= NEIGHMASK;
@@ -341,8 +372,6 @@ void PairDICE::compute(int eflag, int vflag){
     }
   }
 
-  // shorten the tensor to the number of actual neighbors
-  edges_tensor = edges_tensor.index({torch::indexing::Ellipsis, torch::indexing::Slice(0,edge_counter)});
 
   //std::cout << "Edges: " << edges_tensor << "\n";
 
@@ -373,6 +402,7 @@ void PairDICE::compute(int eflag, int vflag){
 
   // Write forces and per-atom energies (0-based tags here)
   eng_vdwl = 0.0;
+#pragma omp parallel for reduction(+:eng_vdwl)
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
 
