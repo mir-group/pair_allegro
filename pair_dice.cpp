@@ -381,15 +381,14 @@ void PairDICE::compute(int eflag, int vflag){
   input.insert("atom_types", ij2type_tensor.to(device));
   std::vector<torch::IValue> input_vector(1, input);
 
+
+
   auto output = model.forward(input_vector).toGenericDict();
 
   torch::Tensor forces_tensor = output.at("forces").toTensor().cpu();
   auto forces = forces_tensor.accessor<float, 2>();
 
-  torch::Tensor total_energy_tensor = output.at("total_energy").toTensor().cpu();
-
-  // store the total energy where LAMMPS wants it
-  eng_vdwl = total_energy_tensor.data_ptr<float>()[0];
+  //torch::Tensor total_energy_tensor = output.at("total_energy").toTensor().cpu(); WRONG WITH MPI
 
   torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor().cpu();
   auto atomic_energies = atomic_energy_tensor.accessor<float, 2>();
