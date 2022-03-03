@@ -216,7 +216,7 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   //}
 
 
-  if(1 || d_edges.extent(1) < nedges){
+  if(d_edges.extent(1) < nedges){
     d_edges = decltype(d_edges)();
     d_edges = decltype(d_edges)("DICE: edges", 2, nedges);
   }
@@ -249,7 +249,7 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   });
 
   torch::Tensor ij2type_tensor = torch::from_blob(d_ij2type.data(), {ignum}, torch::TensorOptions().dtype(torch::kInt64).device(device));
-  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {nedges,1}, torch::TensorOptions().dtype(torch::kInt64).device(device));
+  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(device));
   torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {ignum,3}, {3,1}, torch::TensorOptions().device(device));
 
   c10::Dict<std::string, torch::Tensor> input;
