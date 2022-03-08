@@ -1,0 +1,40 @@
+# generated using pymatgen
+data_Cu2AgO4
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   3.73674200
+_cell_length_b   4.78830055
+_cell_length_c   5.26442329
+_cell_angle_alpha   82.63428734
+_cell_angle_beta   88.31563201
+_cell_angle_gamma   80.91188012
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   Cu2AgO4
+_chemical_formula_sum   'Cu2 Ag1 O4'
+_cell_volume   92.24043774
+_cell_formula_units_Z   1
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Cu2+  2.0
+  Ag2+  2.0
+  O2-  -2.0
+  O-  -1.0
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Cu2+  Cu0  1  0.00000000  0.50000000  0.50000000  1
+  Cu2+  Cu1  1  0.50000000  0.00000000  0.50000000  1
+  Ag2+  Ag2  1  0.00000000  0.00000000  0.00000000  1
+  O-  O3  1  0.30259700  0.24390800  0.72775700  1
+  O-  O4  1  0.69740300  0.75609200  0.27224300  1
+  O2-  O5  1  0.83244600  0.77056300  0.71899100  1
+  O2-  O6  1  0.16755400  0.22943700  0.28100900  1
