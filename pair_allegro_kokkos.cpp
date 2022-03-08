@@ -30,7 +30,7 @@
 #include "atom_masks.h"
 #include "math_const.h"
 
-#include <pair_dice_kokkos.h>
+#include <pair_allegro_kokkos.h>
 #include <torch/torch.h>
 #include <torch/script.h>
 
@@ -61,7 +61,7 @@ namespace Kokkos {
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
-PairDICEKokkos<DeviceType>::PairDICEKokkos(LAMMPS *lmp) : PairDICE(lmp)
+PairAllegroKokkos<DeviceType>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro(lmp)
 {
   respa_enable = 0;
 
@@ -77,7 +77,7 @@ PairDICEKokkos<DeviceType>::PairDICEKokkos(LAMMPS *lmp) : PairDICE(lmp)
 ------------------------------------------------------------------------- */
 
 template<class DeviceType>
-PairDICEKokkos<DeviceType>::~PairDICEKokkos()
+PairAllegroKokkos<DeviceType>::~PairAllegroKokkos()
 {
   if (!copymode) {
     memoryKK->destroy_kokkos(k_eatom,eatom);
@@ -90,7 +90,7 @@ PairDICEKokkos<DeviceType>::~PairDICEKokkos()
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
-void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
+void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 {
   eflag = eflag_in;
   vflag = vflag_in;
@@ -144,9 +144,9 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if(d_numneigh_short.extent(0) < inum){
     d_numneigh_short = decltype(d_numneigh_short)();
-    d_numneigh_short = Kokkos::View<int*,DeviceType>(Kokkos::ViewAllocateWithoutInitializing("DICE::numneighs_short") ,inum);
+    d_numneigh_short = Kokkos::View<int*,DeviceType>(Kokkos::ViewAllocateWithoutInitializing("Allegro::numneighs_short") ,inum);
     d_cumsum_numneigh_short = decltype(d_cumsum_numneigh_short)();
-    d_cumsum_numneigh_short = Kokkos::View<int*,DeviceType>(Kokkos::ViewAllocateWithoutInitializing("DICE::cumsum_numneighs_short") ,inum);
+    d_cumsum_numneigh_short = Kokkos::View<int*,DeviceType>(Kokkos::ViewAllocateWithoutInitializing("Allegro::cumsum_numneighs_short") ,inum);
   }
   if(d_neighbors_short.extent(0) < inum || d_neighbors_short.extent(1) < max_neighs){
     d_neighbors_short = decltype(d_neighbors_short)();
@@ -167,7 +167,7 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   auto d_eatom = this->d_eatom;
   auto d_type_mapper = this->d_type_mapper;
 
-  Kokkos::parallel_for("DICE: Short neighlist", Kokkos::RangePolicy<DeviceType>(0,inum), KOKKOS_LAMBDA(const int ii){
+  Kokkos::parallel_for("Allegro: Short neighlist", Kokkos::RangePolicy<DeviceType>(0,inum), KOKKOS_LAMBDA(const int ii){
       const int i = d_ilist[ii];
       const X_FLOAT xtmp = x(i,0);
       const X_FLOAT ytmp = x(i,1);
@@ -195,13 +195,13 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   });
   Kokkos::deep_copy(d_cumsum_numneigh_short, d_numneigh_short);
 
-  Kokkos::parallel_scan("DICE: cumsum shortneighs", Kokkos::RangePolicy<DeviceType>(0,inum), KOKKOS_LAMBDA(const int ii, int& update, const bool is_final){
+  Kokkos::parallel_scan("Allegro: cumsum shortneighs", Kokkos::RangePolicy<DeviceType>(0,inum), KOKKOS_LAMBDA(const int ii, int& update, const bool is_final){
       const int curr_val = d_cumsum_numneigh_short(ii);
       update += curr_val;
       if(is_final) d_cumsum_numneigh_short(ii) = update;
   });
   int nedges = 0;
-  Kokkos::View<int*, Kokkos::HostSpace> nedges_view("DICE: nedges",1);
+  Kokkos::View<int*, Kokkos::HostSpace> nedges_view("Allegro: nedges",1);
   Kokkos::deep_copy(nedges_view, Kokkos::subview(d_cumsum_numneigh_short, Kokkos::make_pair(inum-1, inum)));
   nedges = nedges_view(0);
 
@@ -218,27 +218,27 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if(d_edges.extent(1) < nedges){
     d_edges = decltype(d_edges)();
-    d_edges = decltype(d_edges)("DICE: edges", 2, nedges);
+    d_edges = decltype(d_edges)("Allegro: edges", 2, nedges);
   }
   if(d_ij2type.extent(0) < ignum){
     d_ij2type = decltype(d_ij2type)();
-    d_ij2type = decltype(d_ij2type)("DICE: ij2type", ignum);
+    d_ij2type = decltype(d_ij2type)("Allegro: ij2type", ignum);
     d_xfloat = decltype(d_xfloat)();
-    d_xfloat = decltype(d_xfloat)("DICE: xfloat", ignum, 3);
+    d_xfloat = decltype(d_xfloat)("Allegro: xfloat", ignum, 3);
   }
 
   auto d_edges = this->d_edges;
   auto d_ij2type = this->d_ij2type;
   auto d_xfloat = this->d_xfloat;
 
-  Kokkos::parallel_for("DICE: store type mask and x", Kokkos::RangePolicy<DeviceType>(0, ignum), KOKKOS_LAMBDA(const int i){
+  Kokkos::parallel_for("Allegro: store type mask and x", Kokkos::RangePolicy<DeviceType>(0, ignum), KOKKOS_LAMBDA(const int i){
       d_ij2type(i) = d_type_mapper(d_type(i)-1);
       d_xfloat(i,0) = x(i,0);
       d_xfloat(i,1) = x(i,1);
       d_xfloat(i,2) = x(i,2);
   });
 
-  Kokkos::parallel_for("DICE: create edges", Kokkos::TeamPolicy<DeviceType>(inum, Kokkos::AUTO()), KOKKOS_LAMBDA(const MemberType team_member){
+  Kokkos::parallel_for("Allegro: create edges", Kokkos::TeamPolicy<DeviceType>(inum, Kokkos::AUTO()), KOKKOS_LAMBDA(const MemberType team_member){
       const int ii = team_member.league_rank();
       const int i = d_ilist(ii);
       const int startedge = ii==0 ? 0 : d_cumsum_numneigh_short(ii-1);
@@ -275,7 +275,7 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   eng_vdwl = 0.0;
   auto eflag_atom = this->eflag_atom;
-  Kokkos::parallel_reduce("DICE: store forces",
+  Kokkos::parallel_reduce("Allegro: store forces",
       Kokkos::RangePolicy<DeviceType>(0, ignum),
       KOKKOS_LAMBDA(const int i, double &eng_vdwl){
         f(i,0) = d_forces(i,0);
@@ -315,11 +315,11 @@ void PairDICEKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 ------------------------------------------------------------------------- */
 
 template<class DeviceType>
-void PairDICEKokkos<DeviceType>::coeff(int narg, char **arg)
+void PairAllegroKokkos<DeviceType>::coeff(int narg, char **arg)
 {
-  PairDICE::coeff(narg,arg);
+  PairAllegro::coeff(narg,arg);
 
-  d_type_mapper = IntView1D("DICE: type_mapper", type_mapper.size());
+  d_type_mapper = IntView1D("Allegro: type_mapper", type_mapper.size());
   auto h_type_mapper = Kokkos::create_mirror_view(d_type_mapper);
   for(int i = 0; i < type_mapper.size(); i++){
     h_type_mapper(i) = type_mapper[i];
@@ -332,9 +332,9 @@ void PairDICEKokkos<DeviceType>::coeff(int narg, char **arg)
 ------------------------------------------------------------------------- */
 
 template<class DeviceType>
-void PairDICEKokkos<DeviceType>::init_style()
+void PairAllegroKokkos<DeviceType>::init_style()
 {
-  PairDICE::init_style();
+  PairAllegro::init_style();
 
   // irequest = neigh request made by parent class
 
@@ -354,18 +354,18 @@ void PairDICEKokkos<DeviceType>::init_style()
     neighbor->requests[irequest]->half = 0;
     neighbor->requests[irequest]->ghost = 1;
   } else {
-    error->all(FLERR,"Cannot use chosen neighbor list style with pair dice/kk");
+    error->all(FLERR,"Cannot use chosen neighbor list style with pair_allegro/kk");
   }
   if (force->newton_pair == 0)
-    error->all(FLERR,"Pair style DICE requires newton pair on");
+    error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
 
 
 namespace LAMMPS_NS {
-template class PairDICEKokkos<LMPDeviceType>;
+template class PairAllegroKokkos<LMPDeviceType>;
 #ifdef LMP_KOKKOS_GPU
-template class PairDICEKokkos<LMPHostType>;
+template class PairAllegroKokkos<LMPHostType>;
 #endif
 }
 

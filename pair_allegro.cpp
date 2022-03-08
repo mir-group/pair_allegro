@@ -15,7 +15,7 @@
    Contributing author: Anders Johansson (Harvard)
 ------------------------------------------------------------------------- */
 
-#include <pair_dice.h>
+#include <pair_allegro.h>
 #include "atom.h"
 #include "comm.h"
 #include "domain.h"
@@ -66,7 +66,7 @@
 
 using namespace LAMMPS_NS;
 
-PairDICE::PairDICE(LAMMPS *lmp) : Pair(lmp) {
+PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
@@ -85,19 +85,19 @@ PairDICE::PairDICE(LAMMPS *lmp) : Pair(lmp) {
   else {
     device = torch::kCPU;
   }
-  std::cout << "DICE is using device " << device << "\n";
+  std::cout << "Allegro is using device " << device << "\n";
 }
 
-PairDICE::~PairDICE(){
+PairAllegro::~PairAllegro(){
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
   }
 }
 
-void PairDICE::init_style(){
+void PairAllegro::init_style(){
   if (atom->tag_enable == 0)
-    error->all(FLERR,"Pair style DICE requires atom IDs");
+    error->all(FLERR,"Pair style Allegro requires atom IDs");
 
   // need a full neighbor list
   int irequest = neighbor->request(this,instance_me);
@@ -107,15 +107,15 @@ void PairDICE::init_style(){
   neighbor->requests[irequest]->ghost = 1;
 
   if (force->newton_pair == 0)
-    error->all(FLERR,"Pair style DICE requires newton pair on");
+    error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
-double PairDICE::init_one(int i, int j)
+double PairAllegro::init_one(int i, int j)
 {
   return cutoff;
 }
 
-void PairDICE::allocate()
+void PairAllegro::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -124,13 +124,13 @@ void PairDICE::allocate()
   memory->create(cutsq,n+1,n+1,"pair:cutsq");
 }
 
-void PairDICE::settings(int narg, char ** /*arg*/) {
-  // "dice" should be the only word after "pair_style" in the input file.
+void PairAllegro::settings(int narg, char ** /*arg*/) {
+  // "allegro" should be the only word after "pair_style" in the input file.
   if (narg > 0)
     error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
 
-void PairDICE::coeff(int narg, char **arg) {
+void PairAllegro::coeff(int narg, char **arg) {
   if (!allocated)
     allocate();
 
@@ -153,7 +153,7 @@ void PairDICE::coeff(int narg, char **arg) {
     elements[i] = arg[i+1];
   }
 
-  std::cout << "DICE: Loading model from " << arg[2] << "\n";
+  std::cout << "Allegro: Loading model from " << arg[2] << "\n";
 
   std::unordered_map<std::string, std::string> metadata = {
     {"config", ""},
@@ -175,7 +175,7 @@ void PairDICE::coeff(int narg, char **arg) {
   // If the model is not already frozen, we should freeze it:
   // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
   if (model.hasattr("training")) {
-    std::cout << "DICE: Freezing TorchScript model...\n";
+    std::cout << "Allegro: Freezing TorchScript model...\n";
     #ifdef DO_TORCH_FREEZE_HACK
       // Do the hack
       // Copied from the implementation of torch::jit::freeze,
@@ -218,7 +218,7 @@ void PairDICE::coeff(int narg, char **arg) {
   at::globalContext().setAllowTF32CuBLAS(allow_tf32);
   at::globalContext().setAllowTF32CuDNN(allow_tf32);
 
-  // std::cout << "DICE: Information from model: " << metadata.size() << " key-value pairs\n";
+  // std::cout << "Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
   // for( const auto& n : metadata ) {
   //   std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
   // }
@@ -231,7 +231,7 @@ void PairDICE::coeff(int narg, char **arg) {
   int n_species = std::stod(metadata["n_species"]);
   ss << metadata["type_names"];
   std::cout << "Type mapping:" << "\n";
-  std::cout << "DICE type | DICE name | LAMMPS type | LAMMPS name" << "\n";
+  std::cout << "Allegro type | Allegro name | LAMMPS type | LAMMPS name" << "\n";
   for (int i = 0; i < n_species; i++){
     std::string ele;
     ss >> ele;
@@ -257,7 +257,7 @@ void PairDICE::coeff(int narg, char **arg) {
 }
 
 // Force and energy computation
-void PairDICE::compute(int eflag, int vflag){
+void PairAllegro::compute(int eflag, int vflag){
   ev_init(eflag, vflag);
 
   // Get info from lammps:

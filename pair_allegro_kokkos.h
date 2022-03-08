@@ -13,16 +13,16 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(dice/kk,PairDICEKokkos<LMPDeviceType>)
-PairStyle(dice/kk/device,PairDICEKokkos<LMPDeviceType>)
-PairStyle(dice/kk/host,PairDICEKokkos<LMPHostType>)
+PairStyle(allegro/kk,PairAllegroKokkos<LMPDeviceType>)
+PairStyle(allegro/kk/device,PairAllegroKokkos<LMPDeviceType>)
+PairStyle(allegro/kk/host,PairAllegroKokkos<LMPHostType>)
 
 #else
 
-#ifndef LMP_PAIR_DICE_KOKKOS_H
-#define LMP_PAIR_DICE_KOKKOS_H
+#ifndef LMP_PAIR_ALLEGRO_KOKKOS_H
+#define LMP_PAIR_ALLEGRO_KOKKOS_H
 
-#include "pair_dice.h"
+#include "pair_allegro.h"
 #include <pair_kokkos.h>
 
 struct TagSingleBond{};
@@ -37,7 +37,7 @@ struct TagStoreF{};
 namespace LAMMPS_NS {
 
 template<class DeviceType>
-class PairDICEKokkos : public PairDICE {
+class PairAllegroKokkos : public PairAllegro {
  public:
   using MemberType = typename Kokkos::TeamPolicy<DeviceType>::member_type;
   enum {EnabledNeighFlags=FULL|HALFTHREAD|HALF};
@@ -46,8 +46,8 @@ class PairDICEKokkos : public PairDICE {
   typedef ArrayTypes<DeviceType> AT;
   typedef EV_FLOAT value_type;
 
-  PairDICEKokkos(class LAMMPS *);
-  virtual ~PairDICEKokkos();
+  PairAllegroKokkos(class LAMMPS *);
+  virtual ~PairAllegroKokkos();
   virtual void compute(int, int);
   virtual void coeff(int, char **);
   virtual void init_style();
@@ -103,7 +103,7 @@ class PairDICEKokkos : public PairDICE {
   Kokkos::View<int*,DeviceType> d_numneigh_short, d_cumsum_numneigh_short;
 
 
-  friend void pair_virial_fdotr_compute<PairDICEKokkos>(PairDICEKokkos*);
+  friend void pair_virial_fdotr_compute<PairAllegroKokkos>(PairAllegroKokkos*);
 };
 }
 
@@ -112,7 +112,7 @@ class PairDICEKokkos : public PairDICE {
 
 /* ERROR/WARNING messages:
 
-E: Cannot use chosen neighbor list style with pair dice/kk
+E: Cannot use chosen neighbor list style with pair_allegro/kk
 
 Self-explanatory.
 

@@ -13,12 +13,12 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(dice,PairDICE)
+PairStyle(allegro,PairAllegro)
 
 #else
 
-#ifndef LMP_PAIR_DICE_H
-#define LMP_PAIR_DICE_H
+#ifndef LMP_PAIR_ALLEGRO_H
+#define LMP_PAIR_ALLEGRO_H
 
 #include "pair.h"
 
@@ -27,10 +27,10 @@ PairStyle(dice,PairDICE)
 
 namespace LAMMPS_NS {
 
-class PairDICE : public Pair {
+class PairAllegro : public Pair {
  public:
-  PairDICE(class LAMMPS *);
-  virtual ~PairDICE();
+  PairAllegro(class LAMMPS *);
+  virtual ~PairAllegro();
   virtual void compute(int, int);
   void settings(int, char **);
   virtual void coeff(int, char **);

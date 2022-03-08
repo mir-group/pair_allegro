@@ -1,1 +1,1 @@
-# pair_dice
+# pair_allegro

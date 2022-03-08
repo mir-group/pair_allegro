@@ -18,7 +18,7 @@ create_atoms	1 box &
     basis 7 2 &
     basis 8 2 &
 
-pair_style	dice
+pair_style	allegro
 pair_coeff	* * nacl.pth Na Cl
 mass            1 22.99
 mass            2 35.45

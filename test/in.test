@@ -6,7 +6,7 @@ thermo 1
 boundary f f f
 read_data structure.data
 
-pair_style	dice
+pair_style	allegro
 pair_coeff	* * deployed-frozen.pth C O H
 mass            1 12
 mass            2 15.9994
