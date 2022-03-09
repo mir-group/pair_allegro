@@ -254,12 +254,12 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if (debug_mode) {
     printf("Allegro edges: i j rij\n");
-    for (int i = 0; i < nedges; i++) {
+    for (long i = 0; i < nedges; i++) {
       printf(
         "%ld %ld %.10g\n",
-        edges_tensor[0, i].item<long>(),
-        edges_tensor[1, i].item<long>(),
-        (pos_tensor[edges_tensor[0, i]] - pos_tensor[edges_tensor[0, i]]).square().sum().sqrt().item<float>()
+        edges_tensor.index({0, i}).item<long>(),
+        edges_tensor.index({1, i}).item<long>(),
+        (pos_tensor[edges_tensor.index({0, i}).item<long>()] - pos_tensor[edges_tensor.index({1, i}).item<long>()]).square().sum().sqrt().item<float>()
       );
     }
     printf("end Allegro edges\n");
