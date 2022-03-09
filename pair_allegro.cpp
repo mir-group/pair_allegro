@@ -81,6 +81,13 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
       MPI_Comm_rank(shmcomm, &shmrank);
       deviceidx = shmrank;
     }
+    if(deviceidx >= 0) {
+      int devicecount = torch::cuda::device_count();
+      if(deviceidx >= devicecount) {
+        std::cerr << "WARNING (Allegro): my rank (" << deviceidx << ") is bigger than the number of visible devices (" << devicecount << "), wrapping around to use device " << deviceidx % devicecount << " again!!!";
+      }
+      deviceidx = deviceidx % devicecount;
+    }
     device = c10::Device(torch::kCUDA,deviceidx);
   }
   else {

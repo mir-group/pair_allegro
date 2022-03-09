@@ -26,13 +26,17 @@ LAMMPS = os.environ.get("LAMMPS", "lmp")
 
 @pytest.fixture(
     params=[
-        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 4.0, {}),
-        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 15.0, {}),
-        ("Cu2AgO4.xyz", "mp-1225882", ["Cu", "Ag", "O"], 4.9, {}),
-        ("Cu-cubic.xyz", "Cu", ["Cu"], 4.5, {}),
-        ("Cu-cubic.xyz", "Cu", ["Cu"], 15.5, {}),
-        ("CuPd-cubic-big.xyz", "CuPd", ["Cu", "Pd"], 5.1, {}),
+        ("CuPd-cubic-big.xyz", "CuPd", ["Cu", "Pd"], 5.1, n_rank)
+        for n_rank in (1, 2, 4)
     ]
+    + [
+        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 4.0, 1),
+        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 15.0, 1),
+        ("Cu2AgO4.xyz", "mp-1225882", ["Cu", "Ag", "O"], 4.9, 1),
+        ("Cu-cubic.xyz", "Cu", ["Cu"], 4.5, 1),
+        ("Cu-cubic.xyz", "Cu", ["Cu"], 15.5, 1),
+    ],
+    scope="module",
 )
 def dataset_options(request):
     out = dict(
@@ -42,17 +46,23 @@ def dataset_options(request):
         )
     )
     out["dataset_file_name"] = TESTS_DIR / ("test_data/" + out["dataset_file_name"])
-    out.update(request.param[-1])
-    return out
+    return out, request.param[-1]
 
 
-@pytest.fixture(params=[187382, 109109])
+@pytest.fixture(
+    params=[
+        187382,
+        109109,
+    ],
+    scope="module",
+)
 def model_seed(request):
     return request.param
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def deployed_model(model_seed, dataset_options):
+    dataset_options, n_rank = dataset_options
     with tempfile.TemporaryDirectory() as tmpdir:
         config = Config.from_file(str(TESTS_DIR / "test_data/test_repro.yaml"))
         config.update(dataset_options)
@@ -97,7 +107,7 @@ def deployed_model(model_seed, dataset_options):
             s.rattle(stdev=0.2)
             s.wrap()
         structures = structures[:1]
-        yield deployed_path, structures, config
+        yield deployed_path, structures, config, n_rank
 
 
 @pytest.mark.parametrize(
@@ -113,7 +123,7 @@ def deployed_model(model_seed, dataset_options):
 def test_repro(deployed_model, kokkos: bool):
     structure: ase.Atoms
     deployed_model: str
-    deployed_model, structures, config = deployed_model
+    deployed_model, structures, config, n_rank = deployed_model
     num_types = len(config["chemical_symbols"])
 
     calc = NequIPCalculator.from_deployed_model(
@@ -181,7 +191,8 @@ def test_repro(deployed_model, kokkos: bool):
 
             # run LAMMPS
             retcode = subprocess.run(
-                [LAMMPS, "-in", infile_path],
+                (["mpirun", "-np", str(n_rank)] if n_rank > 1 else [])
+                + [LAMMPS, "-in", infile_path],
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -190,7 +201,7 @@ def test_repro(deployed_model, kokkos: bool):
             retcode.check_returncode()
 
             # Check the inputs:
-            if not kokkos:
+            if n_rank == 1:
                 # TODO: this will only make sense with one rank
                 # load debug data:
                 mi = None
