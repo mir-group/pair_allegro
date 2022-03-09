@@ -22,6 +22,9 @@ from nequip.data import dataset_from_config, AtomicData, AtomicDataDict
 
 TESTS_DIR = Path(__file__).resolve().parent
 LAMMPS = os.environ.get("LAMMPS", "lmp")
+_lmp_help = subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
+HAS_KOKKOS: bool = b"allegro/kk" in _lmp_help
+HAS_OPENMP: bool = b"OPENMP" in _lmp_help
 
 
 @pytest.fixture(
@@ -111,16 +114,12 @@ def deployed_model(model_seed, dataset_options):
 
 
 @pytest.mark.parametrize(
-    "kokkos",
-    [False]
-    + (
-        [True]
-        if b"allegro/kk"
-        in subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
-        else []
-    ),
+    "kokkos,openmp",
+    [(False, False)]
+    + ([(False, True)] if HAS_OPENMP else [])
+    + ([(True, False)] if HAS_KOKKOS else []),
 )
-def test_repro(deployed_model, kokkos: bool):
+def test_repro(deployed_model, kokkos: bool, openmp: bool):
     structure: ase.Atoms
     deployed_model: str
     deployed_model, structures, config, n_rank = deployed_model
@@ -192,7 +191,9 @@ def test_repro(deployed_model, kokkos: bool):
             # run LAMMPS
             retcode = subprocess.run(
                 (["mpirun", "-np", str(n_rank)] if n_rank > 1 else [])
-                + [LAMMPS, "-in", infile_path],
+                + [LAMMPS]
+                + (["-sf", "omp", "-pk", "omp", "4"] if openmp else [])
+                + ["-in", infile_path],
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -288,7 +289,7 @@ def test_repro(deployed_model, kokkos: bool):
             assert np.allclose(
                 structure.get_forces(),
                 lammps_result.get_forces(),
-                atol=5e-5,
+                atol=1e-4,
             )
             print(
                 f"Max atomic energy error: {np.abs(structure.get_potential_energies() - lammps_result.arrays['c_atomicenergies'].reshape(-1)).max()}"
