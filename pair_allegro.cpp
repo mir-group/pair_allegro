@@ -86,6 +86,11 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
     device = torch::kCPU;
   }
   std::cout << "Allegro is using device " << device << "\n";
+
+  if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
+    std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
+    debug_mode = 1;
+  }
 }
 
 PairAllegro::~PairAllegro(){
@@ -333,6 +338,7 @@ void PairAllegro::compute(int eflag, int vflag){
   // store edges and _cell_shifts
   // ii follows the order of the neighbor lists,
   // i follows the order of x, f, etc.
+  if (debug_mode) printf("Allegro edges: i j rij\n");
 #pragma omp parallel for
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
@@ -369,11 +375,13 @@ void PairAllegro::compute(int eflag, int vflag){
       edges[1][edge_counter] = j;
 
       edge_counter++;
+
+      if (debug_mode) printf("%d %d %.10g\n", itag-1, jtag-1, sqrt(rsq));
     }
   }
+  if (debug_mode) printf("end Allegro edges\n");
 
 
-  //std::cout << "Edges: " << edges_tensor << "\n";
 
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));

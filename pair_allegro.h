@@ -45,6 +45,8 @@ class PairAllegro : public Pair {
 
   int batch_size = -1;
 
+ protected:
+  int debug_mode = 0;
 
 };
 

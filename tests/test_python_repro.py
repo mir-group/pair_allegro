@@ -45,7 +45,7 @@ def dataset_options(request):
     return out
 
 
-@pytest.fixture(params=[187382])  # , 109109])
+@pytest.fixture(params=[187382, 109109])
 def model_seed(request):
     return request.param
 
@@ -99,7 +99,8 @@ def deployed_model(model_seed, dataset_options):
         yield deployed_path, structures, config
 
 
-def test_repro(deployed_model):
+@pytest.mark.parametrize("kokkos", [False])
+def test_repro(deployed_model, kokkos: bool):
     structure: ase.Atoms
     deployed_model: str
     deployed_model, structures, config = deployed_model
@@ -159,6 +160,7 @@ def test_repro(deployed_model):
             f.write(lmp_in)
         # environment variables
         env = dict(os.environ)
+        env["ALLEGRO_DEBUG"] = "true"
         # save out the structure
         for i, structure in enumerate(structures):
             ase.io.write(
@@ -177,6 +179,79 @@ def test_repro(deployed_model):
             )
             retcode.check_returncode()
 
+            # Check the inputs:
+            if not kokkos:
+                # TODO: this will only make sense with one rank
+                # load debug data:
+                mi = None
+                lammps_stdout = iter(retcode.stdout.decode("utf-8").splitlines())
+                line = next(lammps_stdout, None)
+                while line is not None:
+                    if line.startswith("Allegro edges: i j rij"):
+                        edges = []
+                        while not line.startswith("end Allegro edges"):
+                            line = next(lammps_stdout)
+                            edges.append(line)
+                        edges = np.loadtxt(StringIO("\n".join(edges[:-1])))
+                        mi = edges
+                        break
+                    line = next(lammps_stdout)
+                mi = {
+                    "i": mi[:, 0:1].astype(int),
+                    "j": mi[:, 1:2].astype(int),
+                    "rij": mi[:, 2:],
+                }
+
+                # first, check the model INPUTS
+                structure_data = AtomicData.to_AtomicDataDict(
+                    AtomicData.from_ase(structure, r_max=float(config["r_max"]))
+                )
+                structure_data = AtomicDataDict.with_edge_vectors(
+                    structure_data, with_lengths=True
+                )
+                lammps_edge_tuples = [
+                    tuple(e)
+                    for e in np.hstack(
+                        (
+                            mi["i"],
+                            mi["j"],
+                        )
+                    )
+                ]
+                nq_edge_tuples = [
+                    tuple(e.tolist())
+                    for e in structure_data[AtomicDataDict.EDGE_INDEX_KEY].t()
+                ]
+                # same num edges
+                assert len(lammps_edge_tuples) == len(nq_edge_tuples)
+                # check same number of i,j edges across both
+                assert Counter(e[:2] for e in lammps_edge_tuples) == Counter(
+                    e[:2] for e in nq_edge_tuples
+                )
+                # finally, check for each ij whether the the "sets" of edge lengths match
+                nq_ijr = np.core.records.fromarrays(
+                    (
+                        structure_data[AtomicDataDict.EDGE_INDEX_KEY][0],
+                        structure_data[AtomicDataDict.EDGE_INDEX_KEY][1],
+                        structure_data[AtomicDataDict.EDGE_LENGTH_KEY],
+                    ),
+                    names="i,j,rij",
+                )
+                # we can do "set" comparisons by sorting into groups by ij,
+                # and then sorting the rij _within_ each ij pair---
+                # this is what `order` does for us with the record array
+                nq_ijr.sort(order=["i", "j", "rij"])
+                lammps_ijr = np.core.records.fromarrays(
+                    (
+                        mi["i"].reshape(-1),
+                        mi["j"].reshape(-1),
+                        mi["rij"].reshape(-1),
+                    ),
+                    names="i,j,rij",
+                )
+                lammps_ijr.sort(order=["i", "j", "rij"])
+                assert np.allclose(nq_ijr["rij"], lammps_ijr["rij"])
+
             # load dumped data
             lammps_result = ase.io.read(
                 tmpdir + f"/output.dump", format="lammps-dump-text"
@@ -186,15 +261,21 @@ def test_repro(deployed_model):
             structure.calc = calc
 
             # check output atomic quantities
+            print(
+                f"Max force error: {np.abs(structure.get_forces() - lammps_result.get_forces()).max()}"
+            )
             assert np.allclose(
                 structure.get_forces(),
                 lammps_result.get_forces(),
-                atol=1e-6,
+                atol=5e-5,
+            )
+            print(
+                f"Max atomic energy error: {np.abs(structure.get_potential_energies() - lammps_result.arrays['c_atomicenergies'].reshape(-1)).max()}"
             )
             assert np.allclose(
                 structure.get_potential_energies(),
                 lammps_result.arrays["c_atomicenergies"].reshape(-1),
-                atol=2e-7,
+                atol=5e-5,
             )
 
             # check system quantities
