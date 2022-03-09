@@ -21,6 +21,7 @@ from nequip.utils import Config
 from nequip.data import dataset_from_config, AtomicData, AtomicDataDict
 
 TESTS_DIR = Path(__file__).resolve().parent
+LAMMPS = os.environ.get("LAMMPS", "lmp")
 
 
 @pytest.fixture(
@@ -99,7 +100,16 @@ def deployed_model(model_seed, dataset_options):
         yield deployed_path, structures, config
 
 
-@pytest.mark.parametrize("kokkos", [False])
+@pytest.mark.parametrize(
+    "kokkos",
+    [False]
+    + (
+        [True]
+        if b"allegro/kk"
+        in subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
+        else []
+    ),
+)
 def test_repro(deployed_model, kokkos: bool):
     structure: ase.Atoms
     deployed_model: str
@@ -127,7 +137,7 @@ def test_repro(deployed_model, kokkos: bool):
 
         read_data structure.data
 
-        pair_style	allegro
+        pair_style	allegro{'/kk' if kokkos else ''}
         # note that ASE outputs lammps types in alphabetical order of chemical symbols
         # since we use chem symbols in this test, just put the same
         pair_coeff	* * {deployed_model} {' '.join(sorted(set(config["chemical_symbols"])))}
@@ -171,7 +181,7 @@ def test_repro(deployed_model, kokkos: bool):
 
             # run LAMMPS
             retcode = subprocess.run(
-                [env.get("LAMMPS", "lmp"), "-in", infile_path],
+                [LAMMPS, "-in", infile_path],
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,

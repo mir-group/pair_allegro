@@ -252,6 +252,19 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(device));
   torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {ignum,3}, {3,1}, torch::TensorOptions().device(device));
 
+  if (debug_mode) {
+    printf("Allegro edges: i j rij\n");
+    for (int i = 0; i < nedges; i++) {
+      printf(
+        "%ld %ld %.10g\n",
+        edges_tensor[0, i].item<long>(),
+        edges_tensor[1, i].item<long>(),
+        (pos_tensor[edges_tensor[0, i]] - pos_tensor[edges_tensor[0, i]]).square().sum().sqrt().item<float>()
+      );
+    }
+    printf("end Allegro edges\n");
+  }
+
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor);
   input.insert("edge_index", edges_tensor);
