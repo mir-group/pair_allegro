@@ -52,9 +52,10 @@
 // (see https://github.com/pytorch/pytorch/blob/dfbd030854359207cb3040b864614affeace11ce/torch/csrc/jit/api/module.cpp#L479)
 // is wrong, and we have ro "reimplement" the function
 // to get around that...
-// it's broken in 1.8 and 1.9 so the < check is correct.
-// This appears to be fixed in 1.10.
-#if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR < 10)
+// it's broken in 1.8 and 1.9
+// BUT the internal logic in the function is wrong in 1.10
+// So we only use torch::jit::freeze in >=1.11
+#if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR <= 10)
   #define DO_TORCH_FREEZE_HACK
   // For the hack, need more headers:
   #include <torch/csrc/jit/passes/freeze_module.h>
@@ -191,7 +192,8 @@ void PairAllegro::coeff(int narg, char **arg) {
       auto out_mod = freeze_module(
         model, {}
       );
-      auto graph = model.get_method("forward").graph();
+      // See 1.11 bugfix in https://github.com/pytorch/pytorch/pull/71436
+      auto graph = out_mod.get_method("forward").graph();
       OptimizeFrozenGraph(graph, optimize_numerics);
       model = out_mod;
     #else
