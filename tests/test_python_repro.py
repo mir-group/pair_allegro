@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 import textwrap
+import warnings
 from io import StringIO
 from collections import Counter
 
@@ -25,6 +26,13 @@ LAMMPS = os.environ.get("LAMMPS", "lmp")
 _lmp_help = subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
 HAS_KOKKOS: bool = b"allegro/kk" in _lmp_help
 HAS_OPENMP: bool = b"OPENMP" in _lmp_help
+
+if not HAS_KOKKOS:
+    warnings.warn("Not testing pair_allegro with Kokkos since it wasn't built with it")
+if not HAS_OPENMP:
+    warnings.warn(
+        "Not testing pair_allegro with OpenMP since LAMMPS wasn't built with the OPENMP package"
+    )
 
 
 @pytest.fixture(
