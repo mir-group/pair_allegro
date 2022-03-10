@@ -71,6 +71,11 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
+  if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
+    std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
+    debug_mode = 1;
+  }
+
   if(torch::cuda::is_available()){
     int deviceidx = -1;
     if(comm->nprocs > 1){
@@ -84,9 +89,17 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
     if(deviceidx >= 0) {
       int devicecount = torch::cuda::device_count();
       if(deviceidx >= devicecount) {
-        std::cerr << "WARNING (Allegro): my rank (" << deviceidx << ") is bigger than the number of visible devices (" << devicecount << "), wrapping around to use device " << deviceidx % devicecount << " again!!!";
+        if(debug_mode) {
+          // To allow testing multi-rank calls, we need to support multiple ranks with one GPU
+          std::cerr << "WARNING (Allegro): my rank (" << deviceidx << ") is bigger than the number of visible devices (" << devicecount << "), wrapping around to use device " << deviceidx % devicecount << " again!!!";
+          deviceidx = deviceidx % devicecount;
+        }
+        else {
+          // Otherwise, more ranks than GPUs is an error
+          std::cerr << "ERROR (Allegro): my rank (" << deviceidx << ") is bigger than the number of visible devices (" << devicecount << ")!!!";
+          error->all(FLERR,"pair_allegro: mismatch between number of ranks and number of available GPUs");
+        }
       }
-      deviceidx = deviceidx % devicecount;
     }
     device = c10::Device(torch::kCUDA,deviceidx);
   }
@@ -94,11 +107,6 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
     device = torch::kCPU;
   }
   std::cout << "Allegro is using device " << device << "\n";
-
-  if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
-    std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
-    debug_mode = 1;
-  }
 }
 
 PairAllegro::~PairAllegro(){
