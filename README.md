@@ -39,10 +39,6 @@ From the `pair_allegro` directory, run:
 ```bash
 ./patch_lammps.sh /path/to/lammps/
 ```
-If you want to use Kokkos, include the `-k` flag:
-```bash
-./patch_lammps.sh -k /path/to/lammps/
-```
 
 #### Libtorch
 If you have PyTorch installed and are **NOT** using Kokkos:

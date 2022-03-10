@@ -2,16 +2,13 @@
 # patch_lammps.sh [-e] /path/to/lammps/
 
 do_e_mode=false
-kokkos=false
 
 while getopts "hek" option; do
    case $option in
       e)
          do_e_mode=true;;
-      k)
-         kokkos=true;;
       h) # display Help
-         echo "patch_lammps.sh [-e] [-k] /path/to/lammps/"
+         echo "patch_lammps.sh [-e] /path/to/lammps/"
          exit;;
    esac
 done
@@ -50,23 +47,22 @@ if grep -q "find_package(Torch REQUIRED)" $lammps_dir/cmake/CMakeLists.txt ; the
     # exit 1
 fi
 
-if [ "$kokkos" = true ]
-then
-    src_selector=( pair_allegro.cpp pair_allegro.h pair_allegro_kokkos.cpp pair_allegro_kokkos.h )
-else
-    src_selector=( pair_allegro.cpp pair_allegro.h )
-fi
-
 if [ "$do_e_mode" = true ]
 then
     echo "Making source symlinks (-e)..."
-    for file in "${src_selector[@]}"; do
+    for file in pair_allegro.*; do
         ln -s `realpath -s $file` $lammps_dir/src/$file
+    done
+    for file in pair_allegro_kokkos.*; do
+        ln -s `realpath -s $file` $lammps_dir/src/KOKKOS/$file
     done
 else
     echo "Copying files..."
-    for file in "${src_selector[@]}"; do
+    for file in pair_allegro.*; do
         cp $file $lammps_dir/src/$file
+    done
+    for file in pair_allegro_kokkos.*; do
+        cp $file $lammps_dir/src/KOKKOS/$file
     done
 fi
 
