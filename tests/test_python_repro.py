@@ -154,7 +154,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
 
         read_data structure.data
 
-        pair_style	allegro{'/kk' if kokkos else ''}
+        pair_style	allegro
         # note that ASE outputs lammps types in alphabetical order of chemical symbols
         # since we use chem symbols in this test, just put the same
         pair_coeff	* * {deployed_model} {' '.join(sorted(set(config["chemical_symbols"])))}
@@ -212,7 +212,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                         "on",
                         ("g" if torch.cuda.is_available() else "t"),
                         str(
-                            torch.cuda.device_count()
+                            max(torch.cuda.device_count() // n_rank, 1)
                             if torch.cuda.is_available()
                             else OMP_NUM_THREADS
                         ),

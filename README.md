@@ -10,13 +10,17 @@ This pair style allows you to use Allegro models in LAMMPS simulations. Allegro 
 
 ```
 pair_style	allegro
-# or pair_style	allegro/kk for Kokkos
 pair_coeff	* * deployed.pth <type name 1> <type name 2> ...
 ```
 where `deployed.pth` is the filename of your trained model.
 
 The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!). 
 The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`.
+
+To run with Kokkos, please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example options might look like:
+```bash
+lmp -sf kk -k on g [num_GPUs_per_rank] -pk kokkos newton on neigh full
+```
 
 ## Building LAMMPS with this pair style
 
