@@ -183,6 +183,7 @@ void PairAllegro::coeff(int narg, char **arg) {
     {"n_species", ""},
     {"type_names", ""},
     {"_jit_bailout_depth", ""},
+    {"_jit_fusion_strategy", ""},
     {"allow_tf32", ""}
   };
   model = torch::jit::load(std::string(arg[2]), device, metadata);
@@ -217,15 +218,32 @@ void PairAllegro::coeff(int narg, char **arg) {
     #endif
   }
 
-  // Set JIT bailout to avoid long recompilations for many steps
-  size_t jit_bailout_depth;
-  if (metadata["_jit_bailout_depth"].empty()) {
-    // This is the default used in the Python code
-    jit_bailout_depth = 2;
-  } else {
-    jit_bailout_depth = std::stoi(metadata["_jit_bailout_depth"]);
-  }
-  torch::jit::getBailoutDepth() = jit_bailout_depth;
+  #if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR <= 10)
+    // Set JIT bailout to avoid long recompilations for many steps
+    size_t jit_bailout_depth;
+    if (metadata["_jit_bailout_depth"].empty()) {
+      // This is the default used in the Python code
+      jit_bailout_depth = 2;
+    } else {
+      jit_bailout_depth = std::stoi(metadata["_jit_bailout_depth"]);
+    }
+    torch::jit::getBailoutDepth() = jit_bailout_depth;
+  #else
+    // In PyTorch >=1.11, this is now set_fusion_strategy
+    torch::jit::FusionStrategy strategy;
+    if (metadata["_jit_fusion_strategy"].empty()) {
+      // This is the default used in the Python code
+      strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
+    } else {
+      std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
+      std::string fusion_type, fusion_depth;
+      while(std::getline(strat_stream, fusion_type, ',')) {
+        std::getline(strat_stream, fusion_depth, ';');
+        strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
+      }
+    }
+    torch::jit::setFusionStrategy(strategy);
+  #endif
 
   // Set whether to allow TF32:
   bool allow_tf32;
