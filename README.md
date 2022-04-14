@@ -1,6 +1,12 @@
 # `pair_allegro`: LAMMPS pair style for Allegro
 
-This pair style allows you to use Allegro models in LAMMPS simulations. Allegro is designed to enable parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
+This pair style allows you to use Allegro models from the [`nequip-allegro`](https://github.com/mir-group/nequip-allegro) package in LAMMPS simulations. Allegro is designed to enable parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
+
+For more details on Allegro itself, background, and the LAMMPS pair style please see the [`nequip-allegro`](https://github.com/mir-group/nequip-allegro) package and our pre-print:
+> *Learning Local Equivariant Representations for Large-Scale Atomistic Dynamics* <br/>
+> Albert Musaelian, Simon Batzner, Anders Johansson, Lixin Sun, Cameron J. Owen, Mordechai Kornbluth, Boris Kozinsky <br/>
+> https://arxiv.org/abs/2204.05249 <br/>
+> https://doi.org/10.48550/arXiv.2204.05249
 
 ## Pre-requisites
 
