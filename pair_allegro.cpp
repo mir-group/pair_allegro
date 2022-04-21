@@ -332,8 +332,13 @@ void PairAllegro::compute(int eflag, int vflag){
   int **firstneigh = list->firstneigh;
 
 
+  // Total number of bonds (sum of number of neighbors)
+  int nedges = 0;
+
+  // Number of bonds per atom
   std::vector<int> neigh_per_atom(nlocal, 0);
-#pragma omp parallel for
+
+#pragma omp parallel for reduction(+:nedges)
   for(int ii = 0; ii < nlocal; ii++){
     int i = ilist[ii];
 
@@ -350,15 +355,17 @@ void PairAllegro::compute(int eflag, int vflag){
       double rsq = dx*dx + dy*dy + dz*dz;
       if(rsq <= cutoff*cutoff) {
         neigh_per_atom[ii]++;
+        nedges++;
       }
     }
   }
 
-  // Total number of bonds (sum of number of neighbors)
-  int nedges = std::accumulate(neigh_per_atom.begin(), neigh_per_atom.end(), 0);
-
+  // Cumulative sum of neighbors, for knowing where to fill in the edges tensor
   std::vector<int> cumsum_neigh_per_atom(nlocal);
-  std::exclusive_scan(neigh_per_atom.begin(), neigh_per_atom.end(), cumsum_neigh_per_atom.begin(), 0);
+
+  for(int ii = 1; ii < nlocal; ii++){
+    cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii-1] + neigh_per_atom[ii-1];
+  }
 
   torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
@@ -416,15 +423,11 @@ void PairAllegro::compute(int eflag, int vflag){
   }
   if (debug_mode) printf("end Allegro edges\n");
 
-
-
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
   input.insert("edge_index", edges_tensor.to(device));
   input.insert("atom_types", ij2type_tensor.to(device));
   std::vector<torch::IValue> input_vector(1, input);
-
-
 
   auto output = model.forward(input_vector).toGenericDict();
 

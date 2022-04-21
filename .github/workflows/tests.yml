@@ -1,0 +1,71 @@
+name: Run LAMMPS-Python tests
+
+on:
+  push:
+    branches:
+    - main
+    - develop
+
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+        torch-version: [1.10.0]
+        nequip-branch: ["develop"]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      env:
+        TORCH: "${{ matrix.torch-version }}"
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==${TORCH} -f https://download.pytorch.org/whl/cpu/torch_stable.html
+        pip install pytest
+        pip install pytest-xdist[psutil]
+        pip install mkl-include
+    - name: Install NequIP
+      env:
+          NEQUIP: "${{ matrix.nequip-branch }}"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        pip install "https://github.com/mir-group/nequip/archive/main.zip"
+        #git clone --depth=1 "https://github.com/mir-group/allegro"
+        #cd allegro
+        #pip install .
+        pip install "https://github.com/mir-group/allegro/archive/main.zip"
+        #pip install "git+https://github.com/mir-group/allegro" # "https://github.com/mir-group/allegro/archive/main.zip"
+    - name: Fetch and build LAMMPS
+      run: |
+        mkdir lammps_dir/
+        cd lammps_dir/
+        git clone -b stable_29Sep2021_update2 --depth 1 "https://github.com/lammps/lammps"
+        cd ..
+        ./patch_lammps.sh lammps_dir/lammps/
+        cd lammps_dir/lammps/
+        mkdir build/
+        cd build/
+        cmake ../cmake -DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'` -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
+        make -j$(nproc)
+        echo "LAMMPS in dir"
+        pwd
+        ls lmp
+        cd ../../..
+        echo "Now in dir"
+        pwd
+    - name: Run tests with pytest
+      run: |
+        # See https://github.com/pytest-dev/pytest/issues/1075
+        LAMMPS=`pwd`/lammps_dir/lammps/build/lmp pytest tests/
