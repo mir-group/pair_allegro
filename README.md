@@ -32,7 +32,7 @@ lmp -sf kk -k on g [num_GPUs_per_rank] -pk kokkos newton on neigh full
 
 ### Download LAMMPS
 ```bash
-git clone --depth 1 git@github.com:lammps/lammps
+git clone -b stable_29Sep2021_update2 --depth 1 git@github.com:lammps/lammps
 ```
 or your preferred method.
 (`--depth 1` prevents the entire history of the LAMMPS repository from being downloaded.)
