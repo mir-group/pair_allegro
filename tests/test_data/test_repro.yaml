@@ -3,7 +3,7 @@ seed: 123
 dataset_seed: 456
 
 model_builders:
- - nequip_allegro.model.Allegro
+ - allegro.model.Allegro
  - PerSpeciesRescale
  - ForceOutput
  - RescaleEnergyEtc

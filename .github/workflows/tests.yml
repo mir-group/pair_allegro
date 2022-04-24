@@ -10,7 +10,7 @@ jobs:
       matrix:
         python-version: [3.9]
         torch-version: [1.10.0]
-        nequip-branch: ["develop"]
+        nequip-branch: ["main"]
 
     steps:
     - uses: actions/checkout@v2

@@ -96,6 +96,7 @@ def deployed_model(model_seed, dataset_options):
             [
                 "nequip-deploy",
                 "build",
+                "--train-dir",
                 config["root"] + "/" + config["run_name"],
                 deployed_path,
             ],
