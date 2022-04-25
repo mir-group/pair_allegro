@@ -8,6 +8,8 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 > https://arxiv.org/abs/2204.05249 <br/>
 > https://doi.org/10.48550/arXiv.2204.05249
 
+`pair_allegro` authors: **Anders Johansson**, Albert Musaelian.
+
 ## Pre-requisites
 
 * PyTorch or LibTorch >= 1.10.0
