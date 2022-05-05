@@ -33,11 +33,11 @@ jobs:
           NEQUIP: "${{ matrix.nequip-branch }}"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        pip install "https://github.com/mir-group/nequip/archive/main.zip"
+        pip install nequip
         # git clone --depth=1 "https://github.com/mir-group/allegro"
         # cd allegro
         # pip install .
-        pip install "https://github.com/mir-group/allegro/archive/main.zip"
+        pip install git+https://github.com/mir-group/allegro.git
     - name: Fetch and build LAMMPS
       run: |
         mkdir lammps_dir/
