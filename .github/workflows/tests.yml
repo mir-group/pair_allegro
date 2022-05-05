@@ -28,6 +28,10 @@ jobs:
         pip install pytest
         pip install pytest-xdist[psutil]
         pip install mkl-include
+    - name: Install MPI
+      run: |
+        sudo apt update
+        sudo apt install -y libopenmpi-dev --fix-missing
     - name: Install NequIP
       env:
           NEQUIP: "${{ matrix.nequip-branch }}"
