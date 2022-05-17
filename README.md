@@ -18,7 +18,7 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 
 ```
 pair_style	allegro
-pair_coeff	* * deployed.pth <type name 1> <type name 2> ...
+pair_coeff	* * deployed.pth <Allegro type name for LAMMPS type 1> <Allegro type name for LAMMPS type 2> ...
 ```
 where `deployed.pth` is the filename of your trained model.
 
