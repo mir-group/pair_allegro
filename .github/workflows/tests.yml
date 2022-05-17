@@ -28,6 +28,8 @@ jobs:
         pip install pytest
         pip install pytest-xdist[psutil]
         pip install mkl-include
+        wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$TORCH%2Bcpu.zip
+        unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
     - name: Install MPI
       run: |
         sudo apt update
@@ -52,7 +54,7 @@ jobs:
         cd lammps_dir/lammps/
         mkdir build/
         cd build/
-        cmake ../cmake -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'` -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
+        cmake ../cmake -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=../../../libtorch -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
         make -j$(nproc)
         echo "LAMMPS in dir"
         pwd
