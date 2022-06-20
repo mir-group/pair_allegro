@@ -20,7 +20,7 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 pair_style	allegro
 pair_coeff	* * deployed.pth <Allegro type name for LAMMPS type 1> <Allegro type name for LAMMPS type 2> ...
 ```
-where `deployed.pth` is the filename of your trained model.
+where `deployed.pth` is the filename of your trained, **deployed** model.
 
 The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!). 
 The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`.
@@ -101,3 +101,19 @@ to your `cmake` command.
 make -j$(nproc)
 ```
 This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in in.script`. If you specify `-DCMAKE_INSTALL_PREFIX=/somewhere/in/$PATH` (the default is `$HOME/.local`), you can do `make install` and just run `lmp -in in.script`.
+
+## FAQ
+
+1. Q: My simulation is immediately or bizzarely unstable
+
+   A: Please ensure that your mapping from LAMMPS atom types to NequIP atom types, specified in the `pair_coeff` line, is correct.
+2. Q: I get the following error:
+   ```
+    instance of 'c10::Error'
+        what():  PytorchStreamReader failed locating file constants.pkl: file not found
+   ```
+
+   A: Make sure you remembered to deploy (compile) your model using `nequip-deploy`, and that the path to the model given with `pair_coeff` points to a deployed model `.pth` file, **not** a file containing only weights like `best_model.pth`.
+3. Q: The output pressures and stresses seem wrong / my NPT simulation is broken
+
+    A: NPT/stress support in LAMMPS for `pair_allegro` is in-progress and not yet available.
