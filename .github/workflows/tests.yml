@@ -28,7 +28,7 @@ jobs:
         pip install pytest
         pip install pytest-xdist[psutil]
         pip install mkl-include
-        wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$TORCH%2Bcpu.zip
+        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$TORCH%2Bcpu.zip
         unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
     - name: Install MPI
       run: |
