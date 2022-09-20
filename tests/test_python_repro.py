@@ -212,7 +212,15 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
             OMP_NUM_THREADS = 4  # just some choice
             retcode = subprocess.run(
                 # MPI options if MPI
-                (["mpirun", "-np", str(n_rank)] if n_rank > 1 else [])
+                # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
+                # > Alternatively, you can use the --oversubscribe option to ignore the
+                # > number of available slots when deciding the number of processes to
+                # > launch.
+                (
+                    ["mpirun", "--oversubscribe", "-np", str(n_rank)]
+                    if n_rank > 1
+                    else []
+                )
                 # LAMMPS exec
                 + [LAMMPS]
                 # Kokkos options if Kokkos

@@ -27,9 +27,7 @@ jobs:
         sudo apt install -y cmake
         python -m pip install --upgrade pip
         pip install torch==${TORCH} -f https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install pytest
-        pip install pytest-xdist[psutil]
-        pip install mkl-include
+        pip install pytest mkl-include
         wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$TORCH%2Bcpu.zip
         unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
     - name: Install MPI
