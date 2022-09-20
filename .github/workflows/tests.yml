@@ -53,7 +53,7 @@ jobs:
         cd lammps_dir/lammps/
         mkdir build/
         cd build/
-        cmake ../cmake -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=../../../libtorch -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
+        cmake ../cmake -DCMAKE_BUILD_TYPE=Release -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=../../../libtorch -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
         make -j$(nproc)
         echo "LAMMPS in dir"
         pwd
