@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         python-version: [3.9]
-        torch-version: [1.10.0]
+        torch-version: [1.11.0]
         nequip-branch: ["main"]
 
     steps:
@@ -23,6 +23,8 @@ jobs:
         TORCH: "${{ matrix.torch-version }}"
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        sudo apt update
+        sudo apt install -y cmake
         python -m pip install --upgrade pip
         pip install torch==${TORCH} -f https://download.pytorch.org/whl/cpu/torch_stable.html
         pip install pytest
@@ -32,7 +34,6 @@ jobs:
         unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
     - name: Install MPI
       run: |
-        sudo apt update
         sudo apt install -y libopenmpi-dev --fix-missing
     - name: Install NequIP
       env:

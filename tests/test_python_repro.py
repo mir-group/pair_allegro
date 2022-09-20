@@ -1,6 +1,7 @@
 import pytest
 
 import os
+import sys
 import tempfile
 import subprocess
 from pathlib import Path
@@ -71,6 +72,16 @@ def model_seed(request):
     return request.param
 
 
+def _check_and_print(retcode):
+    __tracebackhide__ = True
+    if retcode.returncode:
+        if len(retcode.stdout) > 0:
+            print(retcode.stdout.decode("ascii"))
+        if len(retcode.stderr) > 0:
+            print(retcode.stderr.decode("ascii"), file=sys.stderr)
+        retcode.check_returncode()
+
+
 @pytest.fixture(scope="module")
 def deployed_model(model_seed, dataset_options):
     dataset_options, n_rank = dataset_options
@@ -89,7 +100,7 @@ def deployed_model(model_seed, dataset_options):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        retcode.check_returncode()
+        _check_and_print(retcode)
         # run nequip-deploy
         deployed_path = tmpdir + "/deployed.pth"
         retcode = subprocess.run(
@@ -104,7 +115,7 @@ def deployed_model(model_seed, dataset_options):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        retcode.check_returncode()
+        _check_and_print(retcode)
         # load structures to test on
         d = dataset_from_config(config)
         # take some frames
@@ -232,7 +243,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            retcode.check_returncode()
+            _check_and_print(retcode)
 
             # Check the inputs:
             if n_rank == 1:
