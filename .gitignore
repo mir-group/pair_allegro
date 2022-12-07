@@ -32,8 +32,6 @@
 *.out
 *.app
 
-.vscode
-
 
 
 # ---------- Python .gigignores-----------
