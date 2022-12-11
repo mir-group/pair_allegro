@@ -69,9 +69,11 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
 
         compute atomicenergies all pe/atom
         compute totalatomicenergy all reduce sum c_atomicenergies
+        compute stress all pressure NULL virial  # NULL means without temperature contribution
 
-        thermo_style custom step time temp pe c_totalatomicenergy etotal press spcpu cpuremain
+        thermo_style custom step time temp pe c_totalatomicenergy etotal press spcpu cpuremain c_stress[*]
         run 0
+        print "$({PRECISION_CONST} * c_stress[1]) $({PRECISION_CONST} * c_stress[2]) $({PRECISION_CONST} * c_stress[3]) $({PRECISION_CONST} * c_stress[4]) $({PRECISION_CONST} * c_stress[5]) $({PRECISION_CONST} * c_stress[6])" file stress.dat
         print $({PRECISION_CONST} * pe) file pe.dat
         print $({PRECISION_CONST} * c_totalatomicenergy) file totalatomicenergy.dat
         write_dump all custom output.dump id type x y z fx fy fz c_atomicenergies modify format float %20.15g
@@ -272,3 +274,27 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 lammps_pe,
                 atol=1e-6,
             )
+            # in `metal` units, pressure/stress has units bars
+            # so need to convert
+            lammps_stress = np.fromstring(
+                Path(tmpdir + f"/stress.dat").read_text(), sep=" ", dtype=np.float64
+            ) * (ase.units.bar / PRECISION_CONST)
+            # https://docs.lammps.org/compute_pressure.html
+            # > The ordering of values in the symmetric pressure tensor is as follows: pxx, pyy, pzz, pxy, pxz, pyz.
+            lammps_stress = np.array(
+                [
+                    [lammps_stress[0], lammps_stress[3], lammps_stress[4]],
+                    [lammps_stress[3], lammps_stress[1], lammps_stress[5]],
+                    [lammps_stress[4], lammps_stress[5], lammps_stress[2]],
+                ]
+            )
+            if periodic:
+                # In LAMMPS, the convention is that the stress tensor, and thus the pressure, is related to the virial
+                # WITHOUT a sign change.  In `nequip`, we chose currently to follow the virial = -stress x volume
+                # convention => stress = -1/V * virial.  ASE does not change the sign of the virial, so we have
+                # to flip the sign from ASE for the comparison.
+                assert np.allclose(
+                    -structure.get_stress(voigt=False),
+                    lammps_stress,
+                    atol=1e-5,
+                )

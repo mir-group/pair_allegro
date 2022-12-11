@@ -457,4 +457,20 @@ void PairAllegro::compute(int eflag, int vflag){
     if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }
+
+  if(vflag){
+    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    auto v = v_tensor.accessor<float, 3>();
+    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
+    // First [0] index on v is batch
+    virial[0] = v[0][0][0];
+    virial[1] = v[0][1][1];
+    virial[2] = v[0][2][2];
+    virial[3] = v[0][0][1];
+    virial[4] = v[0][0][2];
+    virial[5] = v[0][1][2];
+  }
+  if(vflag_atom) {
+    error->all(FLERR,"Pair style Allegro does not support per-atom virial");
+  }
 }

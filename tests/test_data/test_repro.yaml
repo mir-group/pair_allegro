@@ -5,7 +5,7 @@ dataset_seed: 456
 model_builders:
  - allegro.model.Allegro
  - PerSpeciesRescale
- - ForceOutput
+ - StressForceOutput
  - RescaleEnergyEtc
 
 avg_num_neighbors: auto
