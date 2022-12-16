@@ -118,6 +118,7 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   x = atomKK->k_x.view<DeviceType>();
   f = atomKK->k_f.view<DeviceType>();
+  virial = atomKK->k_virial.view<DeviceType>();
   tag = atomKK->k_tag.view<DeviceType>();
   type = atomKK->k_type.view<DeviceType>();
   nlocal = atom->nlocal;
@@ -282,6 +283,18 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   UnmanagedFloatView1D d_atomic_energy(atomic_energy_tensor.data_ptr<float>(), inum);
   UnmanagedFloatView2D d_forces(forces_tensor.data_ptr<float>(), ignum, 3);
 
+  if(vflag){
+    torch::Tensor v_tensor = output.at("virial").toTensor();
+    UnmanagedFloatView3D d_v(v_tensor.data_ptr<float>(), 1, 3, 3);
+    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
+    // First [0] index on v is batch
+    virial[0] += d_v[0][0][0];
+    virial[1] += d_v[0][1][1];
+    virial[2] += d_v[0][2][2];
+    virial[3] += d_v[0][0][1];
+    virial[4] += d_v[0][0][2];
+    virial[5] += d_v[0][1][2];
+  }
   //std::cout << "NequIP model output:\n";
   //std::cout << "forces:\n" << forces_tensor.cpu() << "\n";
   //std::cout << "atomic_energy:\n" << atomic_energy_tensor.cpu() << "\n";
