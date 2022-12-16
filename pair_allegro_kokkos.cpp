@@ -284,15 +284,15 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if(vflag){
     torch::Tensor v_tensor = output.at("virial").toTensor();
-    UnmanagedFloatView3D d_v(v_tensor.data_ptr<float>(), 1, 3, 3);
+    UnmanagedFloatView2D d_v(v_tensor.data_ptr<float>(), 3, 3);
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
-    virial[0] += d_v[0][0][0];
-    virial[1] += d_v[0][1][1];
-    virial[2] += d_v[0][2][2];
-    virial[3] += d_v[0][0][1];
-    virial[4] += d_v[0][0][2];
-    virial[5] += d_v[0][1][2];
+    virial[0] += d_v[0][0];
+    virial[1] += d_v[1][1];
+    virial[2] += d_v[2][2];
+    virial[3] += d_v[0][1];
+    virial[4] += d_v[0][2];
+    virial[5] += d_v[1][2];
   }
   //std::cout << "NequIP model output:\n";
   //std::cout << "forces:\n" << forces_tensor.cpu() << "\n";

@@ -78,7 +78,6 @@ class PairAllegroKokkos : public PairAllegro {
   using LongView2D = Kokkos::View<long**, Kokkos::LayoutRight, DeviceType>;
   using UnmanagedFloatView1D = Kokkos::View<float*, Kokkos::LayoutRight, DeviceType>;
   using UnmanagedFloatView2D = Kokkos::View<float**, Kokkos::LayoutRight, DeviceType>;
-  using UnmanagedFloatView3D = Kokkos::View<float***, Kokkos::LayoutRight, DeviceType>;
   using View1D = Kokkos::View<F_FLOAT*, Kokkos::LayoutRight, DeviceType>;
   using View2D = Kokkos::View<F_FLOAT**, Kokkos::LayoutRight, DeviceType>;
   using FloatView2D = Kokkos::View<float**, Kokkos::LayoutRight, DeviceType>;
