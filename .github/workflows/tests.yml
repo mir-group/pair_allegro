@@ -38,7 +38,11 @@ jobs:
           NEQUIP: "${{ matrix.nequip-branch }}"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        pip install "https://github.com/mir-group/nequip/archive/main.zip"
+        git clone "https://github.com/Hongyu-yu/nequip.git"
+        cd nequip
+        git checkout para_stress
+        pip install .
+        # pip install "https://github.com/mir-group/nequip/archive/main.zip"
         # git clone --depth=1 "https://github.com/mir-group/allegro"
         # cd allegro
         # pip install .
