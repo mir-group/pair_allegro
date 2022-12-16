@@ -70,6 +70,7 @@ using namespace LAMMPS_NS;
 PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
+  centroidstressflag = CENTROID_AVAIL; // Allow the use of the centroid/stress/atom. - Added by Hongyu Yu
 
   if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
     std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
@@ -463,14 +464,28 @@ void PairAllegro::compute(int eflag, int vflag){
     auto v = v_tensor.accessor<float, 3>();
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
-    virial[0] = v[0][0][0];
-    virial[1] = v[0][1][1];
-    virial[2] = v[0][2][2];
-    virial[3] = v[0][0][1];
-    virial[4] = v[0][0][2];
-    virial[5] = v[0][1][2];
+    virial[0] += v[0][0][0];
+    virial[1] += v[0][1][1];
+    virial[2] += v[0][2][2];
+    virial[3] += v[0][0][1];
+    virial[4] += v[0][0][2];
+    virial[5] += v[0][1][2];
   }
   if(vflag_atom) {
-    error->all(FLERR,"Pair style Allegro does not support per-atom virial");
-  }
+    torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor().cpu();
+    auto atomic_virial = atomic_virial_tensor.accessor<float, 3>();
+    for (int ii = 0; ii < ntotal; ii++)
+    {
+      int i = ilist[ii];
+      cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
+      cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy 
+      cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
+      cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
+      cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
+      cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
+      cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
+      cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
+      cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
+    }
+  } // Allow the use of the atomic viral. - Added by Hongyu Yu
 }
