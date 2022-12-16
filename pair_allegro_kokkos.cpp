@@ -118,7 +118,6 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   x = atomKK->k_x.view<DeviceType>();
   f = atomKK->k_f.view<DeviceType>();
-  virial = atomKK->k_virial.view<DeviceType>();
   tag = atomKK->k_tag.view<DeviceType>();
   type = atomKK->k_type.view<DeviceType>();
   nlocal = atom->nlocal;
