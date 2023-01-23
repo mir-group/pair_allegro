@@ -72,6 +72,8 @@ PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
+  std::cout << "Allegro is using input precision " << typeid(inputtype).name() << " and output precision " << typeid(outputtype).name() << std::endl;;
+
   if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
     std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
     debug_mode = 1;
