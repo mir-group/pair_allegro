@@ -67,7 +67,8 @@
 
 using namespace LAMMPS_NS;
 
-PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
+template<Precision precision>
+PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
@@ -109,14 +110,16 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   std::cout << "Allegro is using device " << device << "\n";
 }
 
-PairAllegro::~PairAllegro(){
+template<Precision precision>
+PairAllegro<precision>::~PairAllegro(){
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
   }
 }
 
-void PairAllegro::init_style(){
+template<Precision precision>
+void PairAllegro<precision>::init_style(){
   if (atom->tag_enable == 0)
     error->all(FLERR,"Pair style Allegro requires atom IDs");
 
@@ -131,12 +134,14 @@ void PairAllegro::init_style(){
     error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
-double PairAllegro::init_one(int i, int j)
+template<Precision precision>
+double PairAllegro<precision>::init_one(int i, int j)
 {
   return cutoff;
 }
 
-void PairAllegro::allocate()
+template<Precision precision>
+void PairAllegro<precision>::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -145,13 +150,15 @@ void PairAllegro::allocate()
   memory->create(cutsq,n+1,n+1,"pair:cutsq");
 }
 
-void PairAllegro::settings(int narg, char ** /*arg*/) {
+template<Precision precision>
+void PairAllegro<precision>::settings(int narg, char ** /*arg*/) {
   // "allegro" should be the only word after "pair_style" in the input file.
   if (narg > 0)
     error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
 
-void PairAllegro::coeff(int narg, char **arg) {
+template<Precision precision>
+void PairAllegro<precision>::coeff(int narg, char **arg) {
   if (!allocated)
     allocate();
 
@@ -297,7 +304,8 @@ void PairAllegro::coeff(int narg, char **arg) {
 }
 
 // Force and energy computation
-void PairAllegro::compute(int eflag, int vflag){
+template<Precision precision>
+void PairAllegro<precision>::compute(int eflag, int vflag){
   ev_init(eflag, vflag);
 
   // Get info from lammps:
@@ -367,11 +375,11 @@ void PairAllegro::compute(int eflag, int vflag){
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii-1] + neigh_per_atom[ii-1];
   }
 
-  torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
+  torch::Tensor pos_tensor = torch::zeros({ntotal, 3}, torch::TensorOptions().dtype(inputtorchtype));
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
   torch::Tensor ij2type_tensor = torch::zeros({ntotal}, torch::TensorOptions().dtype(torch::kInt64));
 
-  auto pos = pos_tensor.accessor<float, 2>();
+  auto pos = pos_tensor.accessor<inputtype, 2>();
   auto edges = edges_tensor.accessor<long, 2>();
   auto ij2type = ij2type_tensor.accessor<long, 1>();
 
@@ -432,13 +440,13 @@ void PairAllegro::compute(int eflag, int vflag){
   auto output = model.forward(input_vector).toGenericDict();
 
   torch::Tensor forces_tensor = output.at("forces").toTensor().cpu();
-  auto forces = forces_tensor.accessor<float, 2>();
+  auto forces = forces_tensor.accessor<outputtype, 2>();
 
   //torch::Tensor total_energy_tensor = output.at("total_energy").toTensor().cpu(); WRONG WITH MPI
 
   torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor().cpu();
-  auto atomic_energies = atomic_energy_tensor.accessor<float, 2>();
-  float atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<float>()[0];
+  auto atomic_energies = atomic_energy_tensor.accessor<outputtype, 2>();
+  outputtype atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<outputtype>()[0];
 
   //std::cout << "atomic energy sum: " << atomic_energy_sum << std::endl;
   //std::cout << "Total energy: " << total_energy_tensor << "\n";
@@ -457,4 +465,11 @@ void PairAllegro::compute(int eflag, int vflag){
     if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }
+}
+
+namespace LAMMPS_NS {
+  template class PairAllegro<lowlow>;
+  template class PairAllegro<highhigh>;
+  template class PairAllegro<lowhigh>;
+  template class PairAllegro<highlow>;
 }
