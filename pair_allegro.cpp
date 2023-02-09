@@ -470,7 +470,7 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
 
   if(vflag){
     torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
-    auto v = v_tensor.accessor<float, 3>();
+    auto v = v_tensor.accessor<outputtype, 3>();
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
     virial[0] = v[0][0][0];
