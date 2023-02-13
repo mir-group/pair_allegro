@@ -266,7 +266,7 @@ void PairAllegro::coeff(int narg, char **arg) {
   cutoff = std::stod(metadata["r_max"]);
 
   //TODO: This
-  type_mapper.resize(ntypes);
+  type_mapper.resize(ntypes, -1);
   std::stringstream ss;
   int n_species = std::stod(metadata["n_species"]);
   ss << metadata["type_names"];
@@ -284,10 +284,13 @@ void PairAllegro::coeff(int narg, char **arg) {
   }
 
   // set setflag i,j for type pairs where both are mapped to elements
-  for (int i = 1; i <= ntypes; i++)
-    for (int j = i; j <= ntypes; j++)
-        if ((type_mapper[i] >= 0) && (type_mapper[j] >= 0))
+  for (int i = 1; i <= ntypes; i++) {
+    for (int j = i; j <= ntypes; j++) {
+        if ((type_mapper[i-1] >= 0) && (type_mapper[j-1] >= 0)) {
             setflag[i][j] = 1;
+        }
+    }
+  }
 
   char *batchstr = std::getenv("BATCHSIZE");
   if (batchstr != NULL) {
