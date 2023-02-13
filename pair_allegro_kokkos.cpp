@@ -48,16 +48,6 @@ namespace Kokkos {
 #define MAXLINE 1024
 #define DELTA 4
 
-#ifdef LMP_KOKKOS_GPU
-  int vector_length = 32;
-#define TEAM_SIZE 4
-#define SINGLE_BOND_TEAM_SIZE 16
-#else
-  int vector_length = 8;
-#define TEAM_SIZE Kokkos::AUTO()
-#define SINGLE_BOND_TEAM_SIZE Kokkos::AUTO()
-#endif
-
 /* ---------------------------------------------------------------------- */
 
 template<Precision precision>
@@ -311,6 +301,21 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
     k_eatom.template sync<LMPHostType>();
   }
 
+  if(vflag){
+    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    auto v = v_tensor.accessor<outputtype, 3>();
+    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
+    // First [0] index on v is batch
+    this->virial[0] = v[0][0][0];
+    this->virial[1] = v[0][1][1];
+    this->virial[2] = v[0][2][2];
+    this->virial[3] = v[0][0][1];
+    this->virial[4] = v[0][0][2];
+    this->virial[5] = v[0][1][2];
+  }
+  if(this->vflag_atom) {
+    this->error->all(FLERR,"Pair style Allegro does not support per-atom virial");
+  }
 
   if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
 
