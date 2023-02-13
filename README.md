@@ -23,7 +23,7 @@ pair_coeff	* * deployed.pth <Allegro type name for LAMMPS type 1> <Allegro type 
 where `deployed.pth` is the filename of your trained, **deployed** model.
 
 The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!).
-The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`.
+The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`. Typically, this will be the chemical symbol for each LAMMPS type.
 
 To run with Kokkos, please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example:
 ```bash
@@ -94,7 +94,7 @@ Note that the CUDA that comes with PyTorch when installed with `conda` (the `cud
 ```
 -DPKG_KOKKOS=ON -DKokkos_ENABLE_CUDA=ON
 ```
-to your `cmake` command. See the [LAMMPS documentation][https://docs.lammps.org/Speed_kokkos.html] for more build options and how to correctly run LAMMPS with Kokkos.
+to your `cmake` command. See the [LAMMPS documentation](https://docs.lammps.org/Speed_kokkos.html) for more build options and how to correctly run LAMMPS with Kokkos.
 
 ### Building LAMMPS
 ```bash
