@@ -41,7 +41,7 @@ or your preferred method.
 
 ### Download this repository
 ```bash
-git clone git@github.com:mir-group/pair_allegro
+git clone https://github.com/mir-group/pair_allegro
 ```
 or by downloading a ZIP of the source.
 
