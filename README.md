@@ -2,11 +2,10 @@
 
 This pair style allows you to use Allegro models from the [`allegro`](https://github.com/mir-group/allegro) package in LAMMPS simulations. Allegro is designed to enable parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
 
-For more details on Allegro itself, background, and the LAMMPS pair style please see the [`allegro`](https://github.com/mir-group/allegro) package and our pre-print:
+For more details on Allegro itself, background, and the LAMMPS pair style please see the [`allegro`](https://github.com/mir-group/allegro) package and our paper:
 > *Learning Local Equivariant Representations for Large-Scale Atomistic Dynamics* <br/>
 > Albert Musaelian, Simon Batzner, Anders Johansson, Lixin Sun, Cameron J. Owen, Mordechai Kornbluth, Boris Kozinsky <br/>
-> https://arxiv.org/abs/2204.05249 <br/>
-> https://doi.org/10.48550/arXiv.2204.05249
+> https://www.nature.com/articles/s41467-023-36329-y <br/>
 
 `pair_allegro` authors: **Anders Johansson**, Albert Musaelian.
 
@@ -47,11 +46,12 @@ git clone git@github.com:mir-group/pair_allegro
 or by downloading a ZIP of the source.
 
 ### Patch LAMMPS
-#### Automatically
 From the `pair_allegro` directory, run:
 ```bash
 ./patch_lammps.sh /path/to/lammps/
 ```
+
+### Libraries
 
 #### Libtorch
 If you have PyTorch installed and are **NOT** using Kokkos:
@@ -86,7 +86,7 @@ CMake will look for CUDA and cuDNN. You may have to explicitly provide the path 
 Note that the CUDA that comes with PyTorch when installed with `conda` (the `cudatoolkit` package) is usually insufficient (see [here](https://github.com/pytorch/extension-cpp/issues/26), for example) and you may have to install full CUDA seperately. A minor version mismatch between the available full CUDA version and the version of `cudatoolkit` is usually *not* a problem, as long as the system CUDA is equal or newer. (For example, PyTorch's requested `cudatoolkit==11.3` with a system CUDA of 11.4 works, but a system CUDA 11.1 will likely fail.) cuDNN is also required by PyTorch.
 
 #### With OpenMP (optional, better performance)
-`pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style.
+`pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style, by setting `OMP_NUM_THREADS` and using the [LAMMPS OpenMP package](https://docs.lammps.org/Speed_omp.html).
 
 #### With Kokkos (GPU, optional, best performance)
 `pair_allegro` supports the use of Kokkos to accelerate certain parts of the pair style on the GPU to avoid host-GPU transfers.
@@ -106,7 +106,7 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
 
 1. Q: My simulation is immediately or bizzarely unstable
 
-   A: Please ensure that your mapping from LAMMPS atom types to NequIP atom types, specified in the `pair_coeff` line, is correct.
+   A: Please ensure that your mapping from LAMMPS atom types to NequIP atom types, specified in the `pair_coeff` line, is correct, and that the units are consistent between your training data and your LAMMPS simulation.
 2. Q: I get the following error:
    ```
     instance of 'c10::Error'
@@ -114,6 +114,3 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
    ```
 
    A: Make sure you remembered to deploy (compile) your model using `nequip-deploy`, and that the path to the model given with `pair_coeff` points to a deployed model `.pth` file, **not** a file containing only weights like `best_model.pth`.
-3. Q: The output pressures and stresses seem wrong / my NPT simulation is broken
-
-    A: NPT/stress support in LAMMPS for `pair_allegro` is in-progress and not yet available.
