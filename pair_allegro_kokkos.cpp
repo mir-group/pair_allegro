@@ -354,28 +354,15 @@ void PairAllegroKokkos<precision>::init_style()
 {
   super::init_style();
 
-  // irequest = neigh request made by parent class
+  auto request = this->neighbor->find_request(this);
+  request->set_kokkos_host(std::is_same<DeviceType,LMPHostType>::value &&
+      !std::is_same<DeviceType,LMPDeviceType>::value);
+  request->set_kokkos_device(std::is_same<DeviceType,LMPDeviceType>::value);
 
   neighflag = this->lmp->kokkos->neighflag;
-  int irequest = this->neighbor->nrequest - 1;
-
-  this->neighbor->requests[irequest]->
-    kokkos_host = std::is_same<DeviceType,LMPHostType>::value &&
-    !std::is_same<DeviceType,LMPDeviceType>::value;
-  this->neighbor->requests[irequest]->
-    kokkos_device = std::is_same<DeviceType,LMPDeviceType>::value;
-
-  // always request a full neighbor list
-
-  if (neighflag == FULL) { // TODO: figure this out
-    this->neighbor->requests[irequest]->full = 1;
-    this->neighbor->requests[irequest]->half = 0;
-    this->neighbor->requests[irequest]->ghost = 1;
-  } else {
-    this->error->all(FLERR,"Cannot use chosen neighbor list style with pair_allegro/kk");
+  if (neighflag != FULL) {
+    this->error->all(FLERR,"Needs full neighbor list style with pair_allegro/kk");
   }
-  if (this->force->newton_pair == 0)
-    this->error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
 
