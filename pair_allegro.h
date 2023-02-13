@@ -14,7 +14,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro,PairAllegro<lowlow>)
+PairStyle(allegro,PairAllegro<lowhigh>)
 PairStyle(allegro3232,PairAllegro<lowlow>)
 PairStyle(allegro6464,PairAllegro<highhigh>)
 PairStyle(allegro3264,PairAllegro<lowhigh>)
