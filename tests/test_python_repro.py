@@ -101,45 +101,57 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
             # run LAMMPS
             OMP_NUM_THREADS = 4  # just some choice
             retcode = subprocess.run(
-                # MPI options if MPI
-                # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
-                # > Alternatively, you can use the --oversubscribe option to ignore the
-                # > number of available slots when deciding the number of processes to
-                # > launch.
-                (
-                    ["mpirun", "--oversubscribe", "-np", str(n_rank)]
-                    if n_rank > 1
-                    else []
-                )
-                # LAMMPS exec
-                + [LAMMPS]
-                # Kokkos options if Kokkos
-                + (
-                    [
-                        "-sf",
-                        "kk",
-                        "-k",
-                        "on",
-                        ("g" if HAS_KOKKOS_CUDA else "t"),
-                        str(
-                            max(torch.cuda.device_count() // n_rank, 1)
-                            if HAS_KOKKOS_CUDA
-                            else OMP_NUM_THREADS
-                        ),
-                        "-pk",
-                        "kokkos newton on neigh full",
-                    ]
-                    if kokkos
-                    else []
-                )
-                # OpenMP options if openmp
-                + (["-sf", "omp", "-pk", "omp", str(OMP_NUM_THREADS)] if openmp else [])
-                # input
-                + ["-in", infile_path],
+                " ".join(
+                    # Allow user to specify prefix to set up environment before mpirun. For example,
+                    # using `LAMMPS_ENV_PREFIX="conda run -n whatever"` to run LAMMPS in a different
+                    # conda environment.
+                    [os.environ.get("LAMMPS_ENV_PREFIX", "")]
+                    +
+                    # MPI options if MPI
+                    # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
+                    # > Alternatively, you can use the --oversubscribe option to ignore the
+                    # > number of available slots when deciding the number of processes to
+                    # > launch.
+                    (
+                        ["mpirun", "--oversubscribe", "-np", str(n_rank)]
+                        if n_rank > 1
+                        else []
+                    )
+                    # LAMMPS exec
+                    + [LAMMPS]
+                    # Kokkos options if Kokkos
+                    + (
+                        [
+                            "-sf",
+                            "kk",
+                            "-k",
+                            "on",
+                            ("g" if HAS_KOKKOS_CUDA else "t"),
+                            str(
+                                max(torch.cuda.device_count() // n_rank, 1)
+                                if HAS_KOKKOS_CUDA
+                                else OMP_NUM_THREADS
+                            ),
+                            "-pk",
+                            "kokkos newton on neigh full",
+                        ]
+                        if kokkos
+                        else []
+                    )
+                    # OpenMP options if openmp
+                    + (
+                        ["-sf", "omp", "-pk", "omp", str(OMP_NUM_THREADS)]
+                        if openmp
+                        else []
+                    )
+                    # input
+                    + ["-in", infile_path]
+                ).join(" "),
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                shell=True,
             )
             _check_and_print(retcode)
 
