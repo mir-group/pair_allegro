@@ -13,7 +13,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro/kk,PairAllegroKokkos<lowlow>)
+PairStyle(allegro/kk,PairAllegroKokkos<lowhigh>)
 PairStyle(allegro3232/kk,PairAllegroKokkos<lowlow>)
 PairStyle(allegro6464/kk,PairAllegroKokkos<highhigh>)
 PairStyle(allegro3264/kk,PairAllegroKokkos<lowhigh>)

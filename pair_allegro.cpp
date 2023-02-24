@@ -126,7 +126,7 @@ void PairAllegro<precision>::init_style(){
     error->all(FLERR,"Pair style Allegro requires atom IDs");
 
   // Request a full neighbor list.
-  neighbor->add_request(this, NeighConst::REQ_FULL);
+  neighbor->add_request(this, NeighConst::REQ_FULL|NeighConst::REQ_GHOST);
 
   if (force->newton_pair == 0)
     error->all(FLERR,"Pair style Allegro requires newton pair on");
