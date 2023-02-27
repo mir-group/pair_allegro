@@ -146,7 +146,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                     )
                     # input
                     + ["-in", infile_path]
-                ).join(" "),
+                ),
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,
