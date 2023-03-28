@@ -114,3 +114,13 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
    ```
 
    A: Make sure you remembered to deploy (compile) your model using `nequip-deploy`, and that the path to the model given with `pair_coeff` points to a deployed model `.pth` file, **not** a file containing only weights like `best_model.pth`.
+3. Q: I get the following error:
+   ```
+     terminate called after throwing an instance of 'c10::Error'
+        what():  isTuple()INTERNAL ASSERT FAILED at "../aten/src/ATen/core/ivalue_inl.h":1916, please report a bug to PyTorch. Expected Tuple but got String
+   ```
+
+   A: We have seen this error when using models trained in PyTorch 1.13 with a LAMMPS installation built against PyTorch 1.11. Since we currently only recommend PyTorch 1.11 due to upstream issues, the solution to this is to build a model with the same config using `nequip-deploy` in PyTorch 1.11 loading the weights from the PyTorch 1.13 model. Alternatively you can retrain from scratch in 1.11. Please feel free to file an issue or open a discussion if further discussion is relevent.
+4. Q: My simulation fails with `Segmentation Fault (core dumped)`.
+
+   A: This can unfortunately sometimes be the result of running out of memory (rather than an explicit out-of-memory error), check if running with fewer atoms, more GPUs, or a smaller model resolves your issue.
