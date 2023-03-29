@@ -67,9 +67,12 @@
 
 using namespace LAMMPS_NS;
 
-PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
+template<Precision precision>
+PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
+
+  std::cout << "Allegro is using input precision " << typeid(inputtype).name() << " and output precision " << typeid(outputtype).name() << std::endl;;
   centroidstressflag = CENTROID_AVAIL; // Allow the use of the centroid/stress/atom. - Added by Hongyu Yu
 
   if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
@@ -110,34 +113,34 @@ PairAllegro::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   std::cout << "Allegro is using device " << device << "\n";
 }
 
-PairAllegro::~PairAllegro(){
+template<Precision precision>
+PairAllegro<precision>::~PairAllegro(){
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
   }
 }
 
-void PairAllegro::init_style(){
+template<Precision precision>
+void PairAllegro<precision>::init_style(){
   if (atom->tag_enable == 0)
     error->all(FLERR,"Pair style Allegro requires atom IDs");
 
-  // need a full neighbor list
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
-
-  neighbor->requests[irequest]->ghost = 1;
+  // Request a full neighbor list.
+  neighbor->add_request(this, NeighConst::REQ_FULL|NeighConst::REQ_GHOST);
 
   if (force->newton_pair == 0)
     error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
-double PairAllegro::init_one(int i, int j)
+template<Precision precision>
+double PairAllegro<precision>::init_one(int i, int j)
 {
   return cutoff;
 }
 
-void PairAllegro::allocate()
+template<Precision precision>
+void PairAllegro<precision>::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -146,13 +149,15 @@ void PairAllegro::allocate()
   memory->create(cutsq,n+1,n+1,"pair:cutsq");
 }
 
-void PairAllegro::settings(int narg, char ** /*arg*/) {
+template<Precision precision>
+void PairAllegro<precision>::settings(int narg, char ** /*arg*/) {
   // "allegro" should be the only word after "pair_style" in the input file.
   if (narg > 0)
     error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
 
-void PairAllegro::coeff(int narg, char **arg) {
+template<Precision precision>
+void PairAllegro<precision>::coeff(int narg, char **arg) {
   if (!allocated)
     allocate();
 
@@ -267,7 +272,7 @@ void PairAllegro::coeff(int narg, char **arg) {
   cutoff = std::stod(metadata["r_max"]);
 
   //TODO: This
-  type_mapper.resize(ntypes);
+  type_mapper.resize(ntypes, -1);
   std::stringstream ss;
   int n_species = std::stod(metadata["n_species"]);
   ss << metadata["type_names"];
@@ -285,10 +290,13 @@ void PairAllegro::coeff(int narg, char **arg) {
   }
 
   // set setflag i,j for type pairs where both are mapped to elements
-  for (int i = 1; i <= ntypes; i++)
-    for (int j = i; j <= ntypes; j++)
-        if ((type_mapper[i] >= 0) && (type_mapper[j] >= 0))
+  for (int i = 1; i <= ntypes; i++) {
+    for (int j = i; j <= ntypes; j++) {
+        if ((type_mapper[i-1] >= 0) && (type_mapper[j-1] >= 0)) {
             setflag[i][j] = 1;
+        }
+    }
+  }
 
   char *batchstr = std::getenv("BATCHSIZE");
   if (batchstr != NULL) {
@@ -298,7 +306,8 @@ void PairAllegro::coeff(int narg, char **arg) {
 }
 
 // Force and energy computation
-void PairAllegro::compute(int eflag, int vflag){
+template<Precision precision>
+void PairAllegro<precision>::compute(int eflag, int vflag){
   ev_init(eflag, vflag);
 
   // Get info from lammps:
@@ -368,11 +377,11 @@ void PairAllegro::compute(int eflag, int vflag){
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii-1] + neigh_per_atom[ii-1];
   }
 
-  torch::Tensor pos_tensor = torch::zeros({ntotal, 3});
+  torch::Tensor pos_tensor = torch::zeros({ntotal, 3}, torch::TensorOptions().dtype(inputtorchtype));
   torch::Tensor edges_tensor = torch::zeros({2,nedges}, torch::TensorOptions().dtype(torch::kInt64));
   torch::Tensor ij2type_tensor = torch::zeros({ntotal}, torch::TensorOptions().dtype(torch::kInt64));
 
-  auto pos = pos_tensor.accessor<float, 2>();
+  auto pos = pos_tensor.accessor<inputtype, 2>();
   auto edges = edges_tensor.accessor<long, 2>();
   auto ij2type = ij2type_tensor.accessor<long, 1>();
 
@@ -433,13 +442,13 @@ void PairAllegro::compute(int eflag, int vflag){
   auto output = model.forward(input_vector).toGenericDict();
 
   torch::Tensor forces_tensor = output.at("forces").toTensor().cpu();
-  auto forces = forces_tensor.accessor<float, 2>();
+  auto forces = forces_tensor.accessor<outputtype, 2>();
 
   //torch::Tensor total_energy_tensor = output.at("total_energy").toTensor().cpu(); WRONG WITH MPI
 
   torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor().cpu();
-  auto atomic_energies = atomic_energy_tensor.accessor<float, 2>();
-  float atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<float>()[0];
+  auto atomic_energies = atomic_energy_tensor.accessor<outputtype, 2>();
+  outputtype atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<outputtype>()[0];
 
   if(vflag){
     torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
@@ -471,9 +480,21 @@ void PairAllegro::compute(int eflag, int vflag){
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }
 
+  if(vflag){
+    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    auto v = v_tensor.accessor<outputtype, 3>();
+    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
+    // First [0] index on v is batch
+    virial[0] = v[0][0][0];
+    virial[1] = v[0][1][1];
+    virial[2] = v[0][2][2];
+    virial[3] = v[0][0][1];
+    virial[4] = v[0][0][2];
+    virial[5] = v[0][1][2];
+  }
  if(vflag_atom) {
    torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor().cpu();
-   auto atomic_virial = atomic_virial_tensor.accessor<float, 3>();
+   auto atomic_virial = atomic_virial_tensor.accessor<outputtype, 3>();
    for (int ii = 0; ii < ntotal; ii++)
    {
      int i = ilist[ii];
@@ -488,4 +509,11 @@ void PairAllegro::compute(int eflag, int vflag){
      cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
    }
   } // Allow the use of the atomic viral. - Added by Hongyu Yu
+}
+
+namespace LAMMPS_NS {
+  template class PairAllegro<lowlow>;
+  template class PairAllegro<highhigh>;
+  template class PairAllegro<lowhigh>;
+  template class PairAllegro<highlow>;
 }

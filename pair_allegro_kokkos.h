@@ -13,9 +13,11 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro/kk,PairAllegroKokkos<LMPDeviceType>)
-PairStyle(allegro/kk/device,PairAllegroKokkos<LMPDeviceType>)
-PairStyle(allegro/kk/host,PairAllegroKokkos<LMPHostType>)
+PairStyle(allegro/kk,PairAllegroKokkos<lowhigh>)
+PairStyle(allegro3232/kk,PairAllegroKokkos<lowlow>)
+PairStyle(allegro6464/kk,PairAllegroKokkos<highhigh>)
+PairStyle(allegro3264/kk,PairAllegroKokkos<lowhigh>)
+PairStyle(allegro6432/kk,PairAllegroKokkos<highlow>)
 
 #else
 
@@ -36,13 +38,15 @@ struct TagStoreF{};
 
 namespace LAMMPS_NS {
 
-template<class DeviceType>
-class PairAllegroKokkos : public PairAllegro {
+template<Precision precision>
+class PairAllegroKokkos : public PairAllegro<precision> {
  public:
+  typedef PairAllegro<precision> super;
+  using DeviceType = LMPDeviceType;
   using MemberType = typename Kokkos::TeamPolicy<DeviceType>::member_type;
   enum {EnabledNeighFlags=FULL|HALFTHREAD|HALF};
   enum {COUL_FLAG=0};
-  typedef DeviceType device_type;
+  typedef LMPDeviceType device_type;
   typedef ArrayTypes<DeviceType> AT;
   typedef EV_FLOAT value_type;
 
@@ -72,23 +76,26 @@ class PairAllegroKokkos : public PairAllegro {
   DAT::tdual_efloat_1d k_eatom;
   DAT::tdual_virial_array k_vatom;
 
+  using inputtype = typename super::inputtype;
+  using outputtype = typename super::outputtype;
+
   using IntView1D = Kokkos::View<int*, Kokkos::LayoutRight, DeviceType>;
   using IntView2D = Kokkos::View<int**, Kokkos::LayoutRight, DeviceType>;
   using LongView1D = Kokkos::View<long*, Kokkos::LayoutRight, DeviceType>;
   using LongView2D = Kokkos::View<long**, Kokkos::LayoutRight, DeviceType>;
-  using UnmanagedFloatView1D = Kokkos::View<float*, Kokkos::LayoutRight, DeviceType>;
-  using UnmanagedFloatView2D = Kokkos::View<float**, Kokkos::LayoutRight, DeviceType>;
-  using UnmanagedFloatView3D = Kokkos::View<float***, Kokkos::LayoutRight, DeviceType>;
+  using UnmanagedFloatView1D = Kokkos::View<outputtype*, Kokkos::LayoutRight, DeviceType>;
+  using UnmanagedFloatView2D = Kokkos::View<outputtype**, Kokkos::LayoutRight, DeviceType>;
+  using UnmanagedFloatView3D = Kokkos::View<outputtype***, Kokkos::LayoutRight, DeviceType>;
   using View1D = Kokkos::View<F_FLOAT*, Kokkos::LayoutRight, DeviceType>;
   using View2D = Kokkos::View<F_FLOAT**, Kokkos::LayoutRight, DeviceType>;
-  using FloatView2D = Kokkos::View<float**, Kokkos::LayoutRight, DeviceType>;
+  using InputFloatView2D = Kokkos::View<inputtype**, Kokkos::LayoutRight, DeviceType>;
 
 
 
   IntView1D d_type_mapper;
   LongView1D d_ij2type;
   LongView2D d_edges;
-  FloatView2D d_xfloat;
+  InputFloatView2D d_xfloat;
 
 
 

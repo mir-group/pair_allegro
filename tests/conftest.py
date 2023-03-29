@@ -39,7 +39,7 @@ if not HAS_OPENMP:
     + [("Cu-cubic.xyz", "Cu", ["Cu"], 4.5, n_rank) for n_rank in (1, 2)]
     + [
         ("aspirin.xyz", "aspirin", ["C", "H", "O"], 4.0, 1),
-        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 15.0, 1),
+        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 12.0, 1),
         ("Cu2AgO4.xyz", "mp-1225882", ["Cu", "Ag", "O"], 4.9, 1),
         ("Cu-cubic.xyz", "Cu", ["Cu"], 15.5, 1),
     ],

@@ -48,90 +48,80 @@ namespace Kokkos {
 #define MAXLINE 1024
 #define DELTA 4
 
-#ifdef LMP_KOKKOS_GPU
-  int vector_length = 32;
-#define TEAM_SIZE 4
-#define SINGLE_BOND_TEAM_SIZE 16
-#else
-  int vector_length = 8;
-#define TEAM_SIZE Kokkos::AUTO()
-#define SINGLE_BOND_TEAM_SIZE Kokkos::AUTO()
-#endif
-
 /* ---------------------------------------------------------------------- */
 
-template<class DeviceType>
-PairAllegroKokkos<DeviceType>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro(lmp)
+template<Precision precision>
+PairAllegroKokkos<precision>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro<precision>(lmp)
 {
-  respa_enable = 0;
+  this->respa_enable = 0;
 
 
-  atomKK = (AtomKokkos *) atom;
-  execution_space = ExecutionSpaceFromDevice<DeviceType>::space;
-  datamask_read = X_MASK | F_MASK | TAG_MASK | TYPE_MASK | ENERGY_MASK | VIRIAL_MASK;
-  datamask_modify = F_MASK | ENERGY_MASK | VIRIAL_MASK;
+  this->atomKK = (AtomKokkos *) this->atom;
+  this->execution_space = ExecutionSpaceFromDevice<DeviceType>::space;
+  this->datamask_read = X_MASK | F_MASK | TAG_MASK | TYPE_MASK | ENERGY_MASK | VIRIAL_MASK;
+  this->datamask_modify = F_MASK | ENERGY_MASK | VIRIAL_MASK;
 }
 
 /* ----------------------------------------------------------------------
    check if allocated, since class can be destructed when incomplete
 ------------------------------------------------------------------------- */
 
-template<class DeviceType>
-PairAllegroKokkos<DeviceType>::~PairAllegroKokkos()
+template<Precision precision>
+PairAllegroKokkos<precision>::~PairAllegroKokkos()
 {
-  if (!copymode) {
-    memoryKK->destroy_kokkos(k_eatom,eatom);
-    memoryKK->destroy_kokkos(k_vatom,vatom);
-    eatom = NULL;
-    vatom = NULL;
+  if (!this->copymode) {
+    this->memoryKK->destroy_kokkos(k_eatom,this->eatom);
+    this->memoryKK->destroy_kokkos(k_vatom,this->vatom);
+    this->eatom = NULL;
+    this->vatom = NULL;
   }
 }
 
 /* ---------------------------------------------------------------------- */
 
-template<class DeviceType>
-void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
+template<Precision precision>
+void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
 {
   eflag = eflag_in;
   vflag = vflag_in;
 
-  if (neighflag == FULL) no_virial_fdotr_compute = 1;
+  if (neighflag == FULL) this->no_virial_fdotr_compute = 1;
 
-  ev_init(eflag,vflag,0);
+  this->ev_init(eflag,vflag,0);
 
   // reallocate per-atom arrays if necessary
 
-  if (eflag_atom) {
-    memoryKK->destroy_kokkos(k_eatom,eatom);
-    memoryKK->create_kokkos(k_eatom,eatom,maxeatom,"pair:eatom");
+  if (this->eflag_atom) {
+    this->memoryKK->destroy_kokkos(k_eatom,this->eatom);
+    this->memoryKK->create_kokkos(k_eatom,this->eatom,this->maxeatom,"pair:eatom");
     d_eatom = k_eatom.view<DeviceType>();
   }
-  if (vflag_atom) {
-    memoryKK->destroy_kokkos(k_vatom,vatom);
-    memoryKK->create_kokkos(k_vatom,vatom,maxvatom,"pair:vatom");
+  if (this->vflag_atom) {
+    this->memoryKK->destroy_kokkos(k_vatom,this->vatom);
+    this->memoryKK->create_kokkos(k_vatom,this->vatom,this->maxvatom,"pair:vatom");
     d_vatom = k_vatom.view<DeviceType>();
   }
 
-  atomKK->sync(execution_space,datamask_read);
-  if (eflag || vflag) atomKK->modified(execution_space,datamask_modify);
-  else atomKK->modified(execution_space,F_MASK);
+  this->atomKK->sync(this->execution_space,this->datamask_read);
+  if (eflag || vflag) this->atomKK->modified(this->execution_space,this->datamask_modify);
+  else this->atomKK->modified(this->execution_space,F_MASK);
 
-  x = atomKK->k_x.view<DeviceType>();
-  f = atomKK->k_f.view<DeviceType>();
-  tag = atomKK->k_tag.view<DeviceType>();
-  type = atomKK->k_type.view<DeviceType>();
-  nlocal = atom->nlocal;
-  newton_pair = force->newton_pair;
-  nall = atom->nlocal + atom->nghost;
+  x = this->atomKK->k_x.template view<DeviceType>();
+  f = this->atomKK->k_f.template view<DeviceType>();
+  tag = this->atomKK->k_tag.template view<DeviceType>();
+  type = this->atomKK->k_type.template view<DeviceType>();
+  nlocal = this->atom->nlocal;
+  newton_pair = this->force->newton_pair;
+  nall = this->atom->nlocal + this->atom->nghost;
 
-  const int inum = list->inum;
-  const int ignum = inum + list->gnum;
-  NeighListKokkos<DeviceType>* k_list = static_cast<NeighListKokkos<DeviceType>*>(list);
+  const int inum = this->list->inum;
+  const int ignum = inum + this->list->gnum;
+  NeighListKokkos<DeviceType>* k_list = static_cast<NeighListKokkos<DeviceType>*>(this->list);
   d_ilist = k_list->d_ilist;
   d_numneigh = k_list->d_numneigh;
   d_neighbors = k_list->d_neighbors;
 
-  copymode = 1;
+  this->copymode = 1;
 
 
   // build short neighbor list
@@ -248,18 +238,18 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
       });
   });
 
-  torch::Tensor ij2type_tensor = torch::from_blob(d_ij2type.data(), {ignum}, torch::TensorOptions().dtype(torch::kInt64).device(device));
-  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(device));
-  torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {ignum,3}, {3,1}, torch::TensorOptions().device(device));
+  torch::Tensor ij2type_tensor = torch::from_blob(d_ij2type.data(), {ignum}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
+  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
+  torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {ignum,3}, {3,1}, torch::TensorOptions().device(this->device).dtype(this->inputtorchtype));
 
-  if (debug_mode) {
+  if (this->debug_mode) {
     printf("Allegro edges: i j rij\n");
     for (long i = 0; i < nedges; i++) {
       printf(
         "%ld %ld %.10g\n",
         edges_tensor.index({0, i}).item<long>(),
         edges_tensor.index({1, i}).item<long>(),
-        (pos_tensor[edges_tensor.index({0, i}).item<long>()] - pos_tensor[edges_tensor.index({1, i}).item<long>()]).square().sum().sqrt().item<float>()
+        (pos_tensor[edges_tensor.index({0, i}).item<long>()] - pos_tensor[edges_tensor.index({1, i}).item<long>()]).square().sum().sqrt().item<inputtype>()
       );
     }
     printf("end Allegro edges\n");
@@ -275,12 +265,12 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   //std::cout << "edge_index:\n" << edges_tensor.cpu() << "\n";
   //std::cout << "atom_types:\n" << ij2type_tensor.cpu() << "\n";
 
-  auto output = model.forward(input_vector).toGenericDict();
+  auto output = this->model.forward(input_vector).toGenericDict();
   torch::Tensor forces_tensor = output.at("forces").toTensor();
   torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor();
 
-  UnmanagedFloatView1D d_atomic_energy(atomic_energy_tensor.data_ptr<float>(), inum);
-  UnmanagedFloatView2D d_forces(forces_tensor.data_ptr<float>(), ignum, 3);
+  UnmanagedFloatView1D d_atomic_energy(atomic_energy_tensor.data_ptr<outputtype>(), inum);
+  UnmanagedFloatView2D d_forces(forces_tensor.data_ptr<outputtype>(), ignum, 3);
 
   if(vflag){
     torch::Tensor v_tensor = output.at("virial").toTensor();
@@ -298,7 +288,7 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   //std::cout << "forces:\n" << forces_tensor.cpu() << "\n";
   //std::cout << "atomic_energy:\n" << atomic_energy_tensor.cpu() << "\n";
 
-  eng_vdwl = 0.0;
+  this->eng_vdwl = 0.0;
   auto eflag_atom = this->eflag_atom;
   Kokkos::parallel_reduce("Allegro: store forces",
       Kokkos::RangePolicy<DeviceType>(0, ignum),
@@ -313,7 +303,7 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
           eng_vdwl += d_atomic_energy(i);
         }
       },
-      eng_vdwl
+      this->eng_vdwl
       );
 
   if (eflag_atom) {
@@ -323,10 +313,25 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
     k_eatom.template sync<LMPHostType>();
   }
 
+  if(vflag){
+    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    auto v = v_tensor.accessor<outputtype, 3>();
+    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
+    // First [0] index on v is batch
+    this->virial[0] = v[0][0][0];
+    this->virial[1] = v[0][1][1];
+    this->virial[2] = v[0][2][2];
+    this->virial[3] = v[0][0][1];
+    this->virial[4] = v[0][0][2];
+    this->virial[5] = v[0][1][2];
+  }
+  if(this->vflag_atom) {
+    this->error->all(FLERR,"Pair style Allegro does not support per-atom virial");
+  }
 
-  if (vflag_fdotr) pair_virial_fdotr_compute(this);
+  if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
 
-  copymode = 0;
+  this->copymode = 0;
 
 }
 
@@ -339,15 +344,15 @@ void PairAllegroKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-template<class DeviceType>
-void PairAllegroKokkos<DeviceType>::coeff(int narg, char **arg)
+template<Precision precision>
+void PairAllegroKokkos<precision>::coeff(int narg, char **arg)
 {
-  PairAllegro::coeff(narg,arg);
+  super::coeff(narg,arg);
 
-  d_type_mapper = IntView1D("Allegro: type_mapper", type_mapper.size());
+  d_type_mapper = IntView1D("Allegro: type_mapper", this->type_mapper.size());
   auto h_type_mapper = Kokkos::create_mirror_view(d_type_mapper);
-  for(int i = 0; i < type_mapper.size(); i++){
-    h_type_mapper(i) = type_mapper[i];
+  for(int i = 0; i < this->type_mapper.size(); i++){
+    h_type_mapper(i) = this->type_mapper[i];
   }
   Kokkos::deep_copy(d_type_mapper, h_type_mapper);
 }
@@ -356,41 +361,28 @@ void PairAllegroKokkos<DeviceType>::coeff(int narg, char **arg)
    init specific to this pair style
 ------------------------------------------------------------------------- */
 
-template<class DeviceType>
-void PairAllegroKokkos<DeviceType>::init_style()
+template<Precision precision>
+void PairAllegroKokkos<precision>::init_style()
 {
-  PairAllegro::init_style();
+  super::init_style();
 
-  // irequest = neigh request made by parent class
+  auto request = this->neighbor->find_request(this);
+  request->set_kokkos_host(std::is_same<DeviceType,LMPHostType>::value &&
+      !std::is_same<DeviceType,LMPDeviceType>::value);
+  request->set_kokkos_device(std::is_same<DeviceType,LMPDeviceType>::value);
 
-  neighflag = lmp->kokkos->neighflag;
-  int irequest = neighbor->nrequest - 1;
-
-  neighbor->requests[irequest]->
-    kokkos_host = std::is_same<DeviceType,LMPHostType>::value &&
-    !std::is_same<DeviceType,LMPDeviceType>::value;
-  neighbor->requests[irequest]->
-    kokkos_device = std::is_same<DeviceType,LMPDeviceType>::value;
-
-  // always request a full neighbor list
-
-  if (neighflag == FULL) { // TODO: figure this out
-    neighbor->requests[irequest]->full = 1;
-    neighbor->requests[irequest]->half = 0;
-    neighbor->requests[irequest]->ghost = 1;
-  } else {
-    error->all(FLERR,"Cannot use chosen neighbor list style with pair_allegro/kk");
+  neighflag = this->lmp->kokkos->neighflag;
+  if (neighflag != FULL) {
+    this->error->all(FLERR,"Needs full neighbor list style with pair_allegro/kk");
   }
-  if (force->newton_pair == 0)
-    error->all(FLERR,"Pair style Allegro requires newton pair on");
 }
 
 
 
 namespace LAMMPS_NS {
-template class PairAllegroKokkos<LMPDeviceType>;
-#ifdef LMP_KOKKOS_GPU
-template class PairAllegroKokkos<LMPHostType>;
-#endif
+template class PairAllegroKokkos<lowlow>;
+template class PairAllegroKokkos<highhigh>;
+template class PairAllegroKokkos<lowhigh>;
+template class PairAllegroKokkos<highlow>;
 }
 
