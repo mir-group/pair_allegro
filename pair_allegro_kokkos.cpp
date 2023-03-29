@@ -317,10 +317,8 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
     torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor();
     auto atomic_virial = atomic_virial_tensor.accessor<outputtype, 3>();
 
-    Kokkos::parallel_reduce(
-        "Allegro: store cvatom",
-        Kokkos::RangePolicy<DeviceType>(0, ignum),
-        KOKKOS_LAMBDA(const int i) {
+    Kokkos::parallel_reduce("Allegro: store cvatom",
+        Kokkos::RangePolicy<DeviceType>(0, ignum),{
           if (i < inum)
           {
             this->cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
