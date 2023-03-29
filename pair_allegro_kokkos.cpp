@@ -272,18 +272,6 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   UnmanagedFloatView1D d_atomic_energy(atomic_energy_tensor.data_ptr<outputtype>(), inum);
   UnmanagedFloatView2D d_forces(forces_tensor.data_ptr<outputtype>(), ignum, 3);
 
-  if(vflag){
-    torch::Tensor v_tensor = output.at("virial").toTensor();
-    UnmanagedFloatView3D d_v(v_tensor.data_ptr<outputtype>(), 1, 3, 3);
-    // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
-    // First [0] index on v is batch
-    virial[0] += d_v(0,0,0);
-    virial[1] += d_v(0,1,1);
-    virial[2] += d_v(0,2,2);
-    virial[3] += d_v(0,0,1);
-    virial[4] += d_v(0,0,2);
-    virial[5] += d_v(0,1,2);
-  }
   //std::cout << "NequIP model output:\n";
   //std::cout << "forces:\n" << forces_tensor.cpu() << "\n";
   //std::cout << "atomic_energy:\n" << atomic_energy_tensor.cpu() << "\n";
@@ -314,7 +302,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   }
 
   if(vflag){
-    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    torch::Tensor v_tensor = output.at("virial").toTensor();
     auto v = v_tensor.accessor<outputtype, 3>();
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
@@ -326,7 +314,25 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
     this->virial[5] = v[0][1][2];
   }
   if(this->vflag_atom) {
-    this->error->all(FLERR,"Pair style Allegro does not support per-atom virial");
+    torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor();
+    auto atomic_virial = atomic_virial_tensor.accessor<outputtype, 3>();
+
+    Kokkos::parallel_reduce("Allegro: store cvatom",
+    Kokkos::RangePolicy<DeviceType>(0, ignum),
+    KOKKOS_LAMBDA(const int i){
+      if(i < inum){
+        this->cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
+        this->cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy 
+        this->cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
+        this->cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
+        this->cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
+        this->cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
+        this->cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
+        this->cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
+        this->cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
+      }
+    },
+    );
   }
 
   if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
