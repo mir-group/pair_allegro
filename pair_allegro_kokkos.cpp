@@ -317,21 +317,18 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
     torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor();
     auto atomic_virial = atomic_virial_tensor.accessor<outputtype, 3>();
 
-    Kokkos::parallel_reduce("Allegro: store cvatom",
-        Kokkos::RangePolicy<DeviceType>(0, ignum),{
-          if (i < inum)
-          {
-            this->cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
-            this->cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy
-            this->cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
-            this->cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
-            this->cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
-            this->cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
-            this->cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
-            this->cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
-            this->cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
-          }
-        });
+    Kokkos::parallel_for("Allegro: store cvatom",
+    Kokkos::RangePolicy<DeviceType>(0,ignum), KOKKOS_LAMBDA(const int i){
+        this->cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
+        this->cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy
+        this->cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
+        this->cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
+        this->cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
+        this->cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
+        this->cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
+        this->cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
+        this->cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
+    });
   }
 
   if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
