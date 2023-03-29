@@ -274,7 +274,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
 
   if(vflag){
     torch::Tensor v_tensor = output.at("virial").toTensor();
-    UnmanagedFloatView3D d_v(v_tensor.data_ptr<float>(), 1, 3, 3);
+    UnmanagedFloatView3D d_v(v_tensor.data_ptr<outputtype>(), 1, 3, 3);
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
     virial[0] += d_v(0,0,0);
