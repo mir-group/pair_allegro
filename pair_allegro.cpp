@@ -469,22 +469,23 @@ void PairAllegro::compute(int eflag, int vflag){
     f[i][2] = forces[i][2];
     if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
-    if(vflag_atom) {
-      torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor().cpu();
-      auto atomic_virial = atomic_virial_tensor.accessor<float, 3>();
-      for (int ii = 0; ii < ntotal; ii++)
-      {
-        int i = ilist[ii];
-        cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
-        cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy 
-        cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
-        cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
-        cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
-        cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
-        cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
-        cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
-        cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
-      }
-    }
+  }
+
+ if(vflag_atom) {
+   torch::Tensor atomic_virial_tensor = output.at("atom_virial").toTensor().cpu();
+   auto atomic_virial = atomic_virial_tensor.accessor<float, 3>();
+   for (int ii = 0; ii < ntotal; ii++)
+   {
+     int i = ilist[ii];
+     cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
+     cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy 
+     cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
+     cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
+     cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
+     cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
+     cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
+     cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
+     cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
+   }
   } // Allow the use of the atomic viral. - Added by Hongyu Yu
 }
