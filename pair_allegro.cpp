@@ -72,7 +72,7 @@ PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
-  std::cout << "Allegro is using input precision " << typeid(inputtype).name() << " and output precision " << typeid(outputtype).name() << std::endl;;
+  if (comm->me==0) std::cout << "Allegro is using input precision " << typeid(inputtype).name() << " and output precision " << typeid(outputtype).name() << std::endl;;
 
   if(const char* env_p = std::getenv("ALLEGRO_DEBUG")){
     std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
@@ -114,9 +114,11 @@ PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
 
 template<Precision precision>
 PairAllegro<precision>::~PairAllegro(){
+  if (copymode) return;
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
+    memory->destroy(cutoff_matrix);
   }
 }
 
@@ -146,6 +148,7 @@ void PairAllegro<precision>::allocate()
 
   memory->create(setflag,n+1,n+1,"pair:setflag");
   memory->create(cutsq,n+1,n+1,"pair:cutsq");
+  memory->create(cutoff_matrix,n,n,"pair:cutoff_matrix");
 }
 
 template<Precision precision>
@@ -179,7 +182,7 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     elements[i] = arg[i+1];
   }
 
-  std::cout << "Allegro: Loading model from " << arg[2] << "\n";
+  if (comm->me==0) std::cout << "Allegro: Loading model from " << arg[2] << "\n";
 
   std::unordered_map<std::string, std::string> metadata = {
     {"config", ""},
@@ -189,7 +192,8 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     {"type_names", ""},
     {"_jit_bailout_depth", ""},
     {"_jit_fusion_strategy", ""},
-    {"allow_tf32", ""}
+    {"allow_tf32", ""},
+    {"per_edge_type_cutoff", ""}
   };
   model = torch::jit::load(std::string(arg[2]), device, metadata);
   model.eval();
@@ -202,7 +206,7 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
   // If the model is not already frozen, we should freeze it:
   // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
   if (model.hasattr("training")) {
-    std::cout << "Allegro: Freezing TorchScript model...\n";
+    if (comm->me==0) std::cout << "Allegro: Freezing TorchScript model...\n";
     #ifdef DO_TORCH_FREEZE_HACK
       // Do the hack
       // Copied from the implementation of torch::jit::freeze,
@@ -263,10 +267,12 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
   at::globalContext().setAllowTF32CuBLAS(allow_tf32);
   at::globalContext().setAllowTF32CuDNN(allow_tf32);
 
-  // std::cout << "Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
-  // for( const auto& n : metadata ) {
-  //   std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
-  // }
+  if (debug_mode) {
+    std::cout << "Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
+    for( const auto& n : metadata ) {
+      if(n.first == "type_names") std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
+    }
+  }
 
   cutoff = std::stod(metadata["r_max"]);
 
@@ -275,15 +281,15 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
   std::stringstream ss;
   int n_species = std::stod(metadata["n_species"]);
   ss << metadata["type_names"];
-  std::cout << "Type mapping:" << "\n";
-  std::cout << "Allegro type | Allegro name | LAMMPS type | LAMMPS name" << "\n";
+  if(comm->me==0) std::cout << "Type mapping:" << "\n";
+  if(comm->me==0) std::cout << "Allegro type | Allegro name | LAMMPS type | LAMMPS name" << "\n";
   for (int i = 0; i < n_species; i++){
     std::string ele;
     ss >> ele;
     for (int itype = 1; itype <= ntypes; itype++){
       if (ele.compare(arg[itype + 3 - 1]) == 0){
         type_mapper[itype-1] = i;
-        std::cout << i << " | " << ele << " | " << itype << " | " << arg[itype + 3 - 1] << "\n";
+        if(comm->me==0) std::cout << i << " | " << ele << " | " << itype << " | " << arg[itype + 3 - 1] << "\n";
       }
     }
   }
@@ -297,9 +303,39 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     }
   }
 
-  char *batchstr = std::getenv("BATCHSIZE");
-  if (batchstr != NULL) {
-    batch_size = std::atoi(batchstr);
+  if (!metadata["per_edge_type_cutoff"].empty()) {
+    std::stringstream matrix_string;
+    matrix_string << metadata["per_edge_type_cutoff"];
+    std::vector<int> reverse_type_mapper(n_species, -1);
+
+    for(int i = 0; i < ntypes; i++){
+      reverse_type_mapper[type_mapper[i]] = i;
+    }
+
+    for(int i = 0; i < n_species; i++){
+      for(int j = 0; j < n_species; j++){
+        double cutij;
+        matrix_string >> cutij;
+        if (reverse_type_mapper[i]>=0 && reverse_type_mapper[j]>=0){
+          if(comm->me==0) {
+            printf("%s %s si=%d sj=%d ti=%d tj=%d cut=%.2f\n",
+                arg[reverse_type_mapper[i]+3],
+                arg[reverse_type_mapper[j]+3],
+                i, j,
+                reverse_type_mapper[i],
+                reverse_type_mapper[j],
+                cutij);
+          }
+          cutoff_matrix[reverse_type_mapper[i]][reverse_type_mapper[j]] = cutij; //TODO
+        }
+      }
+    }
+  } else {
+    for(int i = 0; i < ntypes; i++){
+      for(int j = 0; j < ntypes; j++){
+        cutoff_matrix[i][j] = cutoff;
+      }
+    }
   }
 
 }
@@ -346,6 +382,7 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
 
   // Number of bonds per atom
   std::vector<int> neigh_per_atom(nlocal, 0);
+  int ntypes = atom->ntypes;
 
 #pragma omp parallel for reduction(+:nedges)
   for(int ii = 0; ii < nlocal; ii++){
@@ -362,7 +399,10 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx*dx + dy*dy + dz*dz;
-      if(rsq <= cutoff*cutoff) {
+
+      double cutij = cutoff_matrix[type[i]-1][type[j]-1];// cutoff_matrix[(type[i]-1)*ntypes + type[j]-1];
+      //printf("i=%5d j=%5d ti=%d tj=%d cut=%.2f\n", i, j, type[i], type[j], cutij);
+      if(rsq <= cutij*cutij) {
         neigh_per_atom[ii]++;
         nedges++;
       }
@@ -419,7 +459,9 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx*dx + dy*dy + dz*dz;
-      if(rsq > cutoff*cutoff) {continue;}
+
+      double cutij = cutoff_matrix[itype-1][jtype-1];//cutoff_matrix[(type[i]-1)*ntypes + type[j]-1];
+      if(rsq > cutij*cutij) {continue;}
 
       // TODO: double check order
       edges[0][edge_counter] = i;

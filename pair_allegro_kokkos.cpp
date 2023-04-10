@@ -156,6 +156,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   auto f = this->f;
   auto d_eatom = this->d_eatom;
   auto d_type_mapper = this->d_type_mapper;
+  auto d_cutoff_matrix = this->d_cutoff_matrix;
 
   Kokkos::parallel_for("Allegro: Short neighlist", Kokkos::RangePolicy<DeviceType>(0,inum), KOKKOS_LAMBDA(const int ii){
       const int i = d_ilist[ii];
@@ -171,12 +172,17 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
         int j = d_neighbors(i,jj);
         j &= NEIGHMASK;
 
+        const int sj = d_type[j] - 1;
+        const double ijcut = d_cutoff_matrix(si, sj); //TODO
+
+        //printf("i=%3d j=%3d ti=%d tj=%d cut=%.2f\n", i, j, d_type[i], d_type[j], ijcut);
+
         const X_FLOAT delx = xtmp - x(j,0);
         const X_FLOAT dely = ytmp - x(j,1);
         const X_FLOAT delz = ztmp - x(j,2);
         const F_FLOAT rsq = delx*delx + dely*dely + delz*delz;
 
-        if (rsq < cutoff*cutoff) {
+        if (rsq < ijcut*ijcut) {
           d_neighbors_short(ii,inside) = j;
           inside++;
         }
@@ -336,6 +342,7 @@ template<Precision precision>
 void PairAllegroKokkos<precision>::coeff(int narg, char **arg)
 {
   super::coeff(narg,arg);
+  int ntypes = this->atom->ntypes;
 
   d_type_mapper = IntView1D("Allegro: type_mapper", this->type_mapper.size());
   auto h_type_mapper = Kokkos::create_mirror_view(d_type_mapper);
@@ -343,6 +350,16 @@ void PairAllegroKokkos<precision>::coeff(int narg, char **arg)
     h_type_mapper(i) = this->type_mapper[i];
   }
   Kokkos::deep_copy(d_type_mapper, h_type_mapper);
+
+  d_cutoff_matrix = View2D("Allegro: cutoff_matrix", ntypes, ntypes);
+  auto h_cutoff_matrix = Kokkos::create_mirror_view(d_cutoff_matrix);
+  for(int i = 0; i < ntypes; i++){
+    for(int j = 0; j < ntypes; j++){
+      h_cutoff_matrix(i,j) = this->cutoff_matrix[i][j];
+      if (this->comm->me==0) printf("ti=%d tj=%d cut=%.2f\n", i, j, h_cutoff_matrix(i,j));
+    }
+  }
+  Kokkos::deep_copy(d_cutoff_matrix, h_cutoff_matrix); // TODO: Check
 }
 
 /* ----------------------------------------------------------------------

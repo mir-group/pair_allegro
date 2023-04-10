@@ -96,6 +96,8 @@ class PairAllegroKokkos : public PairAllegro<precision> {
   LongView2D d_edges;
   InputFloatView2D d_xfloat;
 
+  View2D d_cutoff_matrix;
+
 
 
   typename AT::t_neighbors_2d d_neighbors;

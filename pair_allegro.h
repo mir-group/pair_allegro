@@ -62,6 +62,8 @@ class PairAllegro : public Pair {
  protected:
   int debug_mode = 0;
 
+  double** cutoff_matrix;
+
 };
 
 }
