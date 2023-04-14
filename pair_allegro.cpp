@@ -109,7 +109,7 @@ PairAllegro<precision>::PairAllegro(LAMMPS *lmp) : Pair(lmp) {
   else {
     device = torch::kCPU;
   }
-  std::cout << "Allegro is using device " << device << "\n";
+  if (debug_mode) std::cout << "Allegro is using device " << device << "\n";
 }
 
 template<Precision precision>

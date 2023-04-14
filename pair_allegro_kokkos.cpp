@@ -121,6 +121,8 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   d_numneigh = k_list->d_numneigh;
   d_neighbors = k_list->d_neighbors;
 
+  if (inum==0) return; // empty domain
+
   this->copymode = 1;
 
 
