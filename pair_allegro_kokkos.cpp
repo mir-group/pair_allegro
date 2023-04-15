@@ -33,6 +33,7 @@
 #include <pair_allegro_kokkos.h>
 #include <torch/torch.h>
 #include <torch/script.h>
+#include <c10/cuda/CUDACachingAllocator.h>
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
@@ -143,6 +144,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   if(d_neighbors_short.extent(0) < inum || d_neighbors_short.extent(1) < max_neighs){
     d_neighbors_short = decltype(d_neighbors_short)();
     d_neighbors_short = Kokkos::View<int**,DeviceType>(Kokkos::ViewAllocateWithoutInitializing("FLARE::neighbors_short") ,inum,max_neighs);
+    //c10::cuda::CUDACachingAllocator::emptyCache();
   }
 
   // compute short neighbor list
@@ -203,26 +205,27 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   Kokkos::deep_copy(nedges_view, Kokkos::subview(d_cumsum_numneigh_short, Kokkos::make_pair(inum-1, inum)));
   nedges = nedges_view(0);
 
-  auto nn = Kokkos::create_mirror_view(d_numneigh_short);
-  Kokkos::deep_copy(nn, d_numneigh_short);
-  auto cs = Kokkos::create_mirror_view(d_cumsum_numneigh_short);
-  Kokkos::deep_copy(cs, d_cumsum_numneigh_short);
+  //auto nn = Kokkos::create_mirror_view(d_numneigh_short);
+  //Kokkos::deep_copy(nn, d_numneigh_short);
+  //auto cs = Kokkos::create_mirror_view(d_cumsum_numneigh_short);
+  //Kokkos::deep_copy(cs, d_cumsum_numneigh_short);
   //printf("INUM=%d, GNUM=%d, IGNUM=%d\n", inum, list->gnum, ignum);
   //printf("NEDGES: %d\nnumneigh_short cumsum\n",nedges);
   //for(int i = 0; i < inum; i++){
   //  printf("%d %d\n", nn(i), cs(i));
   //}
 
+  double padding_factor = 1.05;
 
-  if(d_edges.extent(1) < nedges){
+  if(d_edges.extent(1) < nedges || nedges*padding_factor*padding_factor < d_edges.extent(1)){
     d_edges = decltype(d_edges)();
-    d_edges = decltype(d_edges)("Allegro: edges", 2, nedges);
+    d_edges = decltype(d_edges)("Allegro: edges", 2, padding_factor*nedges);
   }
-  if(d_ij2type.extent(0) < ignum){
+  if(d_ij2type.extent(0) < ignum+2 || (ignum+2)*padding_factor*padding_factor < d_ij2type.extent(0)){
     d_ij2type = decltype(d_ij2type)();
-    d_ij2type = decltype(d_ij2type)("Allegro: ij2type", ignum);
+    d_ij2type = decltype(d_ij2type)("Allegro: ij2type", padding_factor*ignum+2);
     d_xfloat = decltype(d_xfloat)();
-    d_xfloat = decltype(d_xfloat)("Allegro: xfloat", ignum, 3);
+    d_xfloat = decltype(d_xfloat)("Allegro: xfloat", padding_factor*ignum+2, 3);
   }
 
   auto d_edges = this->d_edges;
@@ -236,6 +239,14 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
       d_xfloat(i,2) = x(i,2);
   });
 
+  int max_atoms = d_ij2type.extent(0);
+  Kokkos::parallel_for("Allegro: store fake atoms", Kokkos::RangePolicy<DeviceType>(ignum, max_atoms), KOKKOS_LAMBDA(const int i){
+      d_ij2type(i) = d_type_mapper(0);
+      d_xfloat(i,0) = i==max_atoms-1 ? 100.0 : 0.0;
+      d_xfloat(i,1) = 0.0;
+      d_xfloat(i,2) = 0.0;
+  });
+
   Kokkos::parallel_for("Allegro: create edges", Kokkos::TeamPolicy<DeviceType>(inum, Kokkos::AUTO()), KOKKOS_LAMBDA(const MemberType team_member){
       const int ii = team_member.league_rank();
       const int i = d_ilist(ii);
@@ -246,9 +257,15 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
       });
   });
 
-  torch::Tensor ij2type_tensor = torch::from_blob(d_ij2type.data(), {ignum}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
-  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,nedges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
-  torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {ignum,3}, {3,1}, torch::TensorOptions().device(this->device).dtype(this->inputtorchtype));
+  int max_edges = d_edges.extent(1);
+  Kokkos::parallel_for("Allegro: store fake edges", Kokkos::RangePolicy<DeviceType>(nedges, max_edges), KOKKOS_LAMBDA(const int i){
+      d_edges(0, i) = max_atoms-2;
+      d_edges(1, i) = max_atoms-1;
+  });
+
+  torch::Tensor ij2type_tensor = torch::from_blob(d_ij2type.data(), {max_atoms}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
+  torch::Tensor edges_tensor = torch::from_blob(d_edges.data(), {2,max_edges}, {(long) d_edges.extent(1),1}, torch::TensorOptions().dtype(torch::kInt64).device(this->device));
+  torch::Tensor pos_tensor = torch::from_blob(d_xfloat.data(), {max_atoms,3}, {3,1}, torch::TensorOptions().device(this->device).dtype(this->inputtorchtype));
 
   if (this->debug_mode) {
     printf("Allegro edges: i j rij\n");

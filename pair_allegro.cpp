@@ -240,17 +240,20 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
   #else
     // In PyTorch >=1.11, this is now set_fusion_strategy
     torch::jit::FusionStrategy strategy;
-    if (metadata["_jit_fusion_strategy"].empty()) {
-      // This is the default used in the Python code
-      strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
-    } else {
-      std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
-      std::string fusion_type, fusion_depth;
-      while(std::getline(strat_stream, fusion_type, ',')) {
-        std::getline(strat_stream, fusion_depth, ';');
-        strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
-      }
-    }
+    strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
+    //strategy = {{torch::jit::FusionBehavior::STATIC, 100}, {torch::jit::FusionBehavior::DYNAMIC, 1}};
+
+    //if (metadata["_jit_fusion_strategy"].empty()) { //TODO: respect model
+    //  // This is the default used in the Python code
+    //  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
+    //} else {
+    //  std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
+    //  std::string fusion_type, fusion_depth;
+    //  while(std::getline(strat_stream, fusion_type, ',')) {
+    //    std::getline(strat_stream, fusion_depth, ';');
+    //    strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
+    //  }
+    //}
     torch::jit::setFusionStrategy(strategy);
   #endif
 
