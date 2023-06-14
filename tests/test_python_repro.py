@@ -18,7 +18,14 @@ import torch
 from nequip.ase import NequIPCalculator
 from nequip.data import AtomicData, AtomicDataDict
 
-from conftest import _check_and_print, LAMMPS, HAS_KOKKOS, HAS_KOKKOS_CUDA, HAS_OPENMP
+from conftest import (
+    _check_and_print,
+    LAMMPS,
+    LAMMPS_ENV_PREFIX,
+    HAS_KOKKOS,
+    HAS_KOKKOS_CUDA,
+    HAS_OPENMP,
+)
 
 
 @pytest.mark.parametrize(
@@ -105,20 +112,14 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                     # Allow user to specify prefix to set up environment before mpirun. For example,
                     # using `LAMMPS_ENV_PREFIX="conda run -n whatever"` to run LAMMPS in a different
                     # conda environment.
-                    [os.environ.get("LAMMPS_ENV_PREFIX", "")]
+                    [LAMMPS_ENV_PREFIX]
                     +
                     # MPI options if MPI
                     # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
                     # > Alternatively, you can use the --oversubscribe option to ignore the
                     # > number of available slots when deciding the number of processes to
                     # > launch.
-                    (
-                        ["mpirun", "--oversubscribe", "-np", str(n_rank)]
-                        if n_rank > 1
-                        else []
-                    )
-                    # LAMMPS exec
-                    + [LAMMPS]
+                    ["mpirun", "--oversubscribe", "-np", str(n_rank), LAMMPS]
                     # Kokkos options if Kokkos
                     + (
                         [

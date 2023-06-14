@@ -16,7 +16,16 @@ from nequip.data import dataset_from_config
 
 TESTS_DIR = Path(__file__).resolve().parent
 LAMMPS = os.environ.get("LAMMPS", "lmp")
-_lmp_help = subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
+# Allow user to specify prefix to set up environment before mpirun. For example,
+# using `LAMMPS_ENV_PREFIX="conda run -n whatever"` to run LAMMPS in a different
+# conda environment.
+LAMMPS_ENV_PREFIX = os.environ.get("LAMMPS_ENV_PREFIX", "")
+_lmp_help = subprocess.run(
+    " ".join([LAMMPS_ENV_PREFIX, "mpirun", LAMMPS, "-h"]),
+    shell="True",
+    stdout=subprocess.PIPE,
+    check=True,
+).stdout
 HAS_KOKKOS: bool = b"allegro/kk" in _lmp_help
 HAS_KOKKOS_CUDA: bool = b"KOKKOS package API: CUDA" in _lmp_help
 HAS_OPENMP: bool = b"OPENMP" in _lmp_help
