@@ -114,7 +114,14 @@ void PairAllegro<precision>::init_style(){
     error->all(FLERR,"Pair style Allegro requires atom IDs");
 
   // Request a full neighbor list.
-  neighbor->add_request(this, NeighConst::REQ_FULL);
+  if (lmp->kokkos) {
+    // Only request full to avoid a Kokkos bug; pair_allegro_kokkos.cpp doesn't need GHOST anyway
+    neighbor->add_request(this, NeighConst::REQ_FULL);
+  }
+  else {
+    // Non-kokkos needs ghost to avoid segfaults
+    neighbor->add_request(this, NeighConst::REQ_FULL|NeighConst::REQ_GHOST);
+  }
 
   if (force->newton_pair == 0)
     error->all(FLERR,"Pair style Allegro requires newton pair on");
@@ -327,7 +334,7 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
   int inum = list->inum;
   assert(inum==nlocal); // This should be true, if my understanding is correct
   // Number of ghost atoms
-  int nghost = this->atom->nghost;
+  int nghost = list->gnum;
   // Total number of atoms
   int ntotal = inum + nghost;
   // Mapping from neigh list ordering to x/f ordering
