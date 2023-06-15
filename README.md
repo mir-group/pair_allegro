@@ -6,12 +6,16 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 > *Learning Local Equivariant Representations for Large-Scale Atomistic Dynamics* <br/>
 > Albert Musaelian, Simon Batzner, Anders Johansson, Lixin Sun, Cameron J. Owen, Mordechai Kornbluth, Boris Kozinsky <br/>
 > https://www.nature.com/articles/s41467-023-36329-y <br/>
+and
+> *Scaling the leading accuracy of deep equivariant models to biomolecular simulations of realistic size* <br/>
+> Albert Musaelian, Anders Johansson, Simon Batzner, Boris Kozinsky <br/>
+> https://arxiv.org/abs/2304.10061 <br/>
 
 `pair_allegro` authors: **Anders Johansson**, Albert Musaelian.
 
 ## Pre-requisites
 
-* PyTorch or LibTorch >= 1.10.0
+* PyTorch or LibTorch >= 1.11.0;  please note that at present we **only recommend 1.11** on CUDA systems.
 
 ## Usage in LAMMPS
 
@@ -114,3 +118,10 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
    ```
 
    A: Make sure you remembered to deploy (compile) your model using `nequip-deploy`, and that the path to the model given with `pair_coeff` points to a deployed model `.pth` file, **not** a file containing only weights like `best_model.pth`.
+3. Q: I get the following error:
+   ```
+    instance of 'c10::Error'
+        what():  isTuple()INTERNAL ASSERT FAILED 
+   ```
+
+   A: We've seen this error occur when you try to load a TorchScript model deployed from PyTorch>1.11 in LAMMPS built against 1.11. Try redeploying your model (retraining not necessary) in a PyTorch 1.11 install.
