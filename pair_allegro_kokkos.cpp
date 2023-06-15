@@ -116,7 +116,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   nall = this->atom->nlocal + this->atom->nghost;
 
   const int inum = this->list->inum;
-  const int ignum = inum + this->list->gnum;
+  const int ignum = inum + this->atom->nghost;
   NeighListKokkos<DeviceType>* k_list = static_cast<NeighListKokkos<DeviceType>*>(this->list);
   d_ilist = k_list->d_ilist;
   d_numneigh = k_list->d_numneigh;
