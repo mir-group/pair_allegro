@@ -2,6 +2,10 @@ run_name: minimal
 seed: 123
 dataset_seed: 456
 
+default_dtype: float64
+model_dtype: float32
+allow_tf32: false
+
 model_builders:
  - allegro.model.Allegro
  - PerSpeciesRescale
@@ -15,8 +19,6 @@ parity: o3_full
 # Allegro layers:
 num_layers: 2
 env_embed_multiplicity: 8
-embed_initial_edge: true
-linear_after_env_embed: false
 
 two_body_latent_mlp_latent_dimensions: [32, 32]
 two_body_latent_mlp_nonlinearity: silu
@@ -25,7 +27,6 @@ two_body_latent_mlp_initialization: uniform
 latent_mlp_latent_dimensions: [32]
 latent_mlp_nonlinearity: silu
 latent_mlp_initialization: uniform
-latent_resnet: true
 
 env_embed_mlp_latent_dimensions: []
 env_embed_mlp_nonlinearity: null
