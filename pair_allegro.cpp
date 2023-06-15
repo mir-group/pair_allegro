@@ -45,23 +45,9 @@
 #include <mpi.h>
 
 
-
-// We have to do a backward compatability hack for <1.10
-// https://discuss.pytorch.org/t/how-to-check-libtorch-version/77709/4
-// Basically, the check in torch::jit::freeze
-// (see https://github.com/pytorch/pytorch/blob/dfbd030854359207cb3040b864614affeace11ce/torch/csrc/jit/api/module.cpp#L479)
-// is wrong, and we have ro "reimplement" the function
-// to get around that...
-// it's broken in 1.8 and 1.9
-// BUT the internal logic in the function is wrong in 1.10
-// So we only use torch::jit::freeze in >=1.11
+// Freezing is broken from C++ in <=1.10; so we've dropped support.
 #if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR <= 10)
-  #define DO_TORCH_FREEZE_HACK
-  // For the hack, need more headers:
-  #include <torch/csrc/jit/passes/freeze_module.h>
-  #include <torch/csrc/jit/passes/frozen_conv_add_relu_fusion.h>
-  #include <torch/csrc/jit/passes/frozen_graph_optimizations.h>
-  #include <torch/csrc/jit/passes/frozen_ops_to_mkldnn.h>
+  #error "PyTorch version < 1.11 is not supported"
 #endif
 
 
@@ -207,55 +193,27 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
   // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
   if (model.hasattr("training")) {
     if (comm->me==0) std::cout << "Allegro: Freezing TorchScript model...\n";
-    #ifdef DO_TORCH_FREEZE_HACK
-      // Do the hack
-      // Copied from the implementation of torch::jit::freeze,
-      // except without the broken check
-      // See https://github.com/pytorch/pytorch/blob/dfbd030854359207cb3040b864614affeace11ce/torch/csrc/jit/api/module.cpp
-      bool optimize_numerics = true;  // the default
-      // the {} is preserved_attrs
-      auto out_mod = freeze_module(
-        model, {}
-      );
-      // See 1.11 bugfix in https://github.com/pytorch/pytorch/pull/71436
-      auto graph = out_mod.get_method("forward").graph();
-      OptimizeFrozenGraph(graph, optimize_numerics);
-      model = out_mod;
-    #else
-      // Do it normally
-      model = torch::jit::freeze(model);
-    #endif
+    model = torch::jit::freeze(model);
   }
 
-  #if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR <= 10)
-    // Set JIT bailout to avoid long recompilations for many steps
-    size_t jit_bailout_depth;
-    if (metadata["_jit_bailout_depth"].empty()) {
-      // This is the default used in the Python code
-      jit_bailout_depth = 2;
-    } else {
-      jit_bailout_depth = std::stoi(metadata["_jit_bailout_depth"]);
-    }
-    torch::jit::getBailoutDepth() = jit_bailout_depth;
-  #else
-    // In PyTorch >=1.11, this is now set_fusion_strategy
-    torch::jit::FusionStrategy strategy;
-    strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
-    //strategy = {{torch::jit::FusionBehavior::STATIC, 100}, {torch::jit::FusionBehavior::DYNAMIC, 1}};
+  
+  // In PyTorch >=1.11, this is now set_fusion_strategy
+  torch::jit::FusionStrategy strategy;
+  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
+  //strategy = {{torch::jit::FusionBehavior::STATIC, 100}, {torch::jit::FusionBehavior::DYNAMIC, 1}};
 
-    //if (metadata["_jit_fusion_strategy"].empty()) { //TODO: respect model
-    //  // This is the default used in the Python code
-    //  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
-    //} else {
-    //  std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
-    //  std::string fusion_type, fusion_depth;
-    //  while(std::getline(strat_stream, fusion_type, ',')) {
-    //    std::getline(strat_stream, fusion_depth, ';');
-    //    strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
-    //  }
-    //}
-    torch::jit::setFusionStrategy(strategy);
-  #endif
+  //if (metadata["_jit_fusion_strategy"].empty()) { //TODO: respect model
+  //  // This is the default used in the Python code
+  //  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
+  //} else {
+  //  std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
+  //  std::string fusion_type, fusion_depth;
+  //  while(std::getline(strat_stream, fusion_type, ',')) {
+  //    std::getline(strat_stream, fusion_depth, ';');
+  //    strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
+  //  }
+  //}
+  torch::jit::setFusionStrategy(strategy);
 
   // Set whether to allow TF32:
   bool allow_tf32;
