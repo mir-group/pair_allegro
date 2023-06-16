@@ -34,7 +34,7 @@ env_embed_mlp_initialization: normal
 # - end allegro layers -
 
 # Final MLP to go from Allegro latent space to edge energies:
-edge_eng_mlp_latent_dimensions: [32]
+edge_eng_mlp_latent_dimensions: [64]
 edge_eng_mlp_nonlinearity: null
 edge_eng_mlp_initialization: normal
 
