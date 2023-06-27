@@ -203,7 +203,7 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     model = torch::jit::freeze(model);
   }
 
-  
+
   // In PyTorch >=1.11, this is now set_fusion_strategy
   torch::jit::FusionStrategy strategy;
   strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
@@ -470,9 +470,9 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
 
-    f[i][0] = forces[i][0];
-    f[i][1] = forces[i][1];
-    f[i][2] = forces[i][2];
+    f[i][0] += forces[i][0];
+    f[i][1] += forces[i][1];
+    f[i][2] += forces[i][2];
     if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }
