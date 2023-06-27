@@ -12,7 +12,7 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 
 ## Pre-requisites
 
-* PyTorch or LibTorch >= 1.10.0
+* PyTorch or LibTorch >= 1.11.0
 
 ## Usage in LAMMPS
 
@@ -22,7 +22,7 @@ pair_coeff	* * deployed.pth <Allegro type name for LAMMPS type 1> <Allegro type 
 ```
 where `deployed.pth` is the filename of your trained, **deployed** model.
 
-The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!). 
+The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!).
 The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`.
 
 To run with Kokkos, please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example:
