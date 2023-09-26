@@ -498,15 +498,15 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
    for (int ii = 0; ii < ntotal; ii++)
    {
      int i = ilist[ii];
-     cvatom[i][0] += -1.0 * atomic_virial[i][0][0]; // xx
-     cvatom[i][1] += -1.0 * atomic_virial[i][1][1]; // yy 
-     cvatom[i][2] += -1.0 * atomic_virial[i][2][2]; // zz
-     cvatom[i][3] += -1.0 * atomic_virial[i][0][1]; // xy
-     cvatom[i][4] += -1.0 * atomic_virial[i][0][2]; // xz
-     cvatom[i][5] += -1.0 * atomic_virial[i][1][2]; // yz
-     cvatom[i][6] += -1.0 * atomic_virial[i][1][0]; // yx
-     cvatom[i][7] += -1.0 * atomic_virial[i][2][0]; // zx
-     cvatom[i][8] += -1.0 * atomic_virial[i][2][1]; // zy
+     cvatom[i][0] += 1.0 * atomic_virial[i][0][0]; // xx
+     cvatom[i][1] += 1.0 * atomic_virial[i][1][1]; // yy 
+     cvatom[i][2] += 1.0 * atomic_virial[i][2][2]; // zz
+     cvatom[i][3] += 1.0 * atomic_virial[i][0][1]; // xy
+     cvatom[i][4] += 1.0 * atomic_virial[i][0][2]; // xz
+     cvatom[i][5] += 1.0 * atomic_virial[i][1][2]; // yz
+     cvatom[i][6] += 1.0 * atomic_virial[i][1][0]; // yx
+     cvatom[i][7] += 1.0 * atomic_virial[i][2][0]; // zx
+     cvatom[i][8] += 1.0 * atomic_virial[i][2][1]; // zy
    }
   } // Allow the use of the atomic viral. - Added by Hongyu Yu
 }
