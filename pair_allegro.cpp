@@ -203,7 +203,6 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     model = torch::jit::freeze(model);
   }
 
-
   // In PyTorch >=1.11, this is now set_fusion_strategy
   torch::jit::FusionStrategy strategy;
   strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
