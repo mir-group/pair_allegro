@@ -30,6 +30,9 @@ PairStyle(allegro6432,PairAllegro<highlow>)
 #include <torch/torch.h>
 #include <vector>
 #include <type_traits>
+#include <map>
+#include <string>
+
 enum Precision {lowlow, highhigh, lowhigh, highlow};
 
 namespace LAMMPS_NS {
@@ -58,6 +61,10 @@ class PairAllegro : public Pair {
 
   torch::ScalarType inputtorchtype = torch::CppTypeToScalarType<inputtype>();
   torch::ScalarType outputtorchtype = torch::CppTypeToScalarType<outputtype>();
+
+  std::vector<std::string> custom_output_names;
+  std::map<std::string, torch::Tensor> custom_output;
+  void add_custom_output(std::string);
 
  protected:
   int debug_mode = 0;

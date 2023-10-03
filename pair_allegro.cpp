@@ -491,6 +491,15 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
   if(vflag_atom) {
     error->all(FLERR,"Pair style Allegro does not support per-atom virial");
   }
+
+  for(const std::string &output_name : custom_output_names){
+    custom_output.insert_or_assign(output_name, output.at(output_name).toTensor());
+  }
+}
+
+template<Precision precision>
+void PairAllegro<precision>::add_custom_output(std::string name){
+  custom_output_names.push_back(name);
 }
 
 namespace LAMMPS_NS {
