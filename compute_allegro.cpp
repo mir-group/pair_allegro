@@ -77,5 +77,7 @@ void ComputeAllegro::compute_vector(){
   for(int i = 0; i < size_vector; i++){
     vector[i] = quantity[i];
   }
+
+  MPI_Allreduce(MPI_IN_PLACE, vector, size_vector, MPI_DOUBLE, MPI_SUM, world);
 }
 
