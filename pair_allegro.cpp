@@ -492,6 +492,13 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
     error->all(FLERR,"Pair style Allegro does not support per-atom virial");
   }
 
+  if (debug_mode) {
+    std::cout << "ALLEGRO CUSTOM OUTPUT" << std::endl;
+    for(const auto &elem : output){
+      std::cout << elem.key() << "\n" << elem.value() << std::endl;
+    }
+  }
+
   for(const std::string &output_name : custom_output_names){
     custom_output.insert_or_assign(output_name, output.at(output_name).toTensor());
   }

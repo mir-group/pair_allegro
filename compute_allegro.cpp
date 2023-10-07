@@ -55,6 +55,12 @@ ComputeAllegro::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Compute(lmp,
   if(size_vector<=0)
     error->all(FLERR, "Incorrect vector length!");
   memory->create(vector, size_vector, "ComputeAllegro:vector");
+
+  if (force->pair == nullptr) {
+    error->all(FLERR, "no pair style; compute allegro must be defined after pair style");
+  }
+
+  ((PairAllegro<lowhigh>*) force->pair)->add_custom_output(quantity);
 }
 
 void ComputeAllegro::init(){
