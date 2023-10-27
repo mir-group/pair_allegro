@@ -33,7 +33,9 @@
 #include <pair_allegro_kokkos.h>
 #include <torch/torch.h>
 #include <torch/script.h>
+#ifdef KOKKOS_ENABLE_CUDA
 #include <c10/cuda/CUDACachingAllocator.h>
+#endif
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
