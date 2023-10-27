@@ -121,7 +121,7 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
 3. Q: I get the following error:
    ```
     instance of 'c10::Error'
-        what():  isTuple()INTERNAL ASSERT FAILED 
+        what():  isTuple()INTERNAL ASSERT FAILED
    ```
 
    A: We've seen this error occur when you try to load a TorchScript model deployed from PyTorch>1.11 in LAMMPS built against 1.11. Try redeploying your model (retraining not necessary) in a PyTorch 1.11 install.
