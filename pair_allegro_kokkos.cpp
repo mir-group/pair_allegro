@@ -348,7 +348,7 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
 
   for(const std::string &output_name : this->custom_output_names){
-    this->custom_output.insert_or_assign(output_name, output.at(output_name).toTensor());
+    this->custom_output.insert_or_assign(output_name, output.at(output_name).toTensor().detach());
   }
 
 

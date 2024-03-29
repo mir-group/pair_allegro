@@ -78,6 +78,12 @@ void ComputeAllegro::compute_vector()
 {
   invoked_peratom = update->ntimestep;
 
+  // printf("extracting %s\n", quantity.c_str()); fflush(stdout);
+  // printf("keys:");
+  // for (auto const& [key,val] : ((PairAllegro<lowhigh> *) force->pair)->custom_output) {
+  //   printf(" %s", key.data());
+  // }
+  // printf("\n"); fflush(stdout);
   const torch::Tensor &quantity_tensor =
       ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().ravel();
 

@@ -495,7 +495,8 @@ template <Precision precision> void PairAllegro<precision>::compute(int eflag, i
   }
   if (vflag_atom) { error->all(FLERR, "Pair style Allegro does not support per-atom virial"); }
 
-  if (update->ntimestep == this->output->next) {
+  // TODO: Figure out reliable solution
+  // if (update->ntimestep == this->output->next || update->ntimestep==0) {
     if (debug_mode) {
       std::cout << "ALLEGRO CUSTOM OUTPUT" << std::endl;
       for (const auto &elem : output) {
@@ -505,9 +506,10 @@ template <Precision precision> void PairAllegro<precision>::compute(int eflag, i
 
     for (const std::string &output_name : custom_output_names) {
       if (!output.contains(output_name)) error->all(FLERR, "missing {}", output_name);
-      custom_output.insert_or_assign(output_name, output.at(output_name).toTensor());
+      // printf("pair_allegro inserting %s\n", output_name.data()); fflush(stdout);
+      custom_output.insert_or_assign(output_name, output.at(output_name).toTensor().detach());
     }
-  }
+  // }
 }
 
 template <Precision precision> void PairAllegro<precision>::add_custom_output(std::string name)
