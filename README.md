@@ -34,6 +34,22 @@ mpirun -np 8 lmp -sf kk -k on g 4 -pk kokkos newton on neigh full -in in.script
 ```
 to run on 2 nodes with 4 GPUs each.
 
+### Compute
+We provide an experimental "compute" that allows you to extract custom quantities from Allegro models, such as [polarization](https://arxiv.org/abs/2403.17207). You can extract either global or per-atom properties with syntax along the lines of
+```
+compute polarization all allegro polarization 3
+compute polarizability all allegro polarizability 9
+compute borncharges all allegro/atom born_charge 9 1
+```
+
+The name after `allegro[/atom]` is attempted extracted from the dictionary that the Allegro model returns. The following number is the number of elements after flattening the output. In the examples above, polarization is a 3-element global vector, while polarizability and Born charges are global and per-atom 3x3 matrices, respectively. For per-atom quantities, the second number is a flag indicating whether the properties should be reverse-communicated "Newton-style" like forces, which will depend on your property and the specifics of your implementation.
+
+*Note: For extracting multiple quantities, simply use multiple commands. The properties will be extracted from the same dictionary, without any recomputation.*
+
+*Note: The quantities will be attempted extracted at every timestep. In the future, we may add support for passing a flag to the model indicating that the "custom" output should be computed.*
+
+*Note: The group flag shoul generally be `all`.*
+
 ## Building LAMMPS with this pair style
 
 ### Download LAMMPS
@@ -125,3 +141,9 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
    ```
 
    A: We've seen this error occur when you try to load a TorchScript model deployed from PyTorch>1.11 in LAMMPS built against 1.11. Try redeploying your model (retraining not necessary) in a PyTorch 1.11 install.
+4. Q: I get the following error:
+    ```
+    Exception: Argument passed to at() was not in the map
+    ```
+
+    A: We now require models to have been trained with stress support, which is achieved by replacing `ForceOutput` with `StressForceOutput` in the training configuration. Note that you do not need to train on stress (though it may improve your potential, assuming your stress data is correct and converged). If you desperately wish to keep using a model without stress output, you can remove lines that look like [these](https://github.com/mir-group/pair_allegro/blob/99036043e74376ac52993b5323f193dee3f4f401/pair_allegro_kokkos.cpp#L332-L343) in your version of `pair_allegro[_kokkos].cpp`.
