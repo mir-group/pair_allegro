@@ -13,7 +13,8 @@
 
 #ifdef COMPUTE_CLASS
 
-ComputeStyle(allegro,ComputeAllegro)
+ComputeStyle(allegro,ComputeAllegro<0>)
+ComputeStyle(allegro/atom,ComputeAllegro<1>)
 
 #else
 
@@ -23,20 +24,28 @@ ComputeStyle(allegro,ComputeAllegro)
 #include "compute.h"
 #include "pair_allegro.h"
 
-#include <torch/torch.h>
 #include <string>
 
 namespace LAMMPS_NS {
 
+template<int peratom>
 class ComputeAllegro : public Compute {
  public:
   ComputeAllegro(class LAMMPS *, int, char**);
   ~ComputeAllegro();
   void compute_vector() override;
+  void compute_peratom() override;
   void init() override;
+
+  int pack_reverse_comm(int, int, double *) override;
+  void unpack_reverse_comm(int, int *, double *) override;
 
  protected:
   std::string quantity;
+  double *quantityptr;
+  int newton;
+  int nperatom;
+  int nmax;
 
 };
 

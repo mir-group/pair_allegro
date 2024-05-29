@@ -36,25 +36,41 @@
 
 using namespace LAMMPS_NS;
 
-ComputeAllegro::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
+template<int peratom>
+ComputeAllegro<peratom>::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
 {
 
-  // compute 1 all allegro quantity length
-  if (narg != 5) error->all(FLERR, "Incorrect args for compute nequip");
+  if constexpr (!peratom) {
+    // compute 1 all allegro quantity length
+    if (narg != 5) error->all(FLERR, "Incorrect args for compute allegro");
+  } else {
+    // compute 1 all allegro/atom quantity length newton(1/0)
+    if (narg != 6) error->all(FLERR, "Incorrect args for compute allegro/atom");
+  }
 
   if (strcmp(arg[1], "all") != 0)
-    error->all(FLERR, "compute nequip can only operate on group 'all'");
+    error->all(FLERR, "compute allegro can only operate on group 'all'");
 
   quantity = arg[3];
-  vector_flag = 1;
-  size_vector = std::atoi(arg[4]);
-
-  if (comm->me == 0)
-    error->message(FLERR, "compute allegro will evaluate the quantity {} of length {}", quantity,
-                   size_vector);
-
-  if (size_vector <= 0) error->all(FLERR, "Incorrect vector length!");
-  memory->create(vector, size_vector, "ComputeAllegro:vector");
+  if constexpr (peratom) {
+    peratom_flag = 1;
+    nperatom = std::atoi(arg[4]);
+    newton = std::atoi(arg[5]);
+    if (newton) comm_reverse = nperatom;
+    size_peratom_cols = nperatom==1 ? 0 : nperatom;
+    nmax = -12;
+    if (comm->me == 0)
+      error->message(FLERR, "compute allegro/atom will evaluate the quantity {} of length {} with newton {}", quantity,
+                     size_peratom_cols, newton);
+  } else {
+    vector_flag = 1;
+    size_vector = std::atoi(arg[4]);
+    if (size_vector <= 0) error->all(FLERR, "Incorrect vector length!");
+    memory->create(vector, size_vector, "ComputeAllegro:vector");
+    if (comm->me == 0)
+      error->message(FLERR, "compute allegro will evaluate the quantity {} of length {}", quantity,
+                     size_vector);
+  }
 
   if (force->pair == nullptr) {
     error->all(FLERR, "no pair style; compute allegro must be defined after pair style");
@@ -63,27 +79,28 @@ ComputeAllegro::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Compute(lmp,
   ((PairAllegro<lowhigh> *) force->pair)->add_custom_output(quantity);
 }
 
-void ComputeAllegro::init()
+template<int peratom>
+void ComputeAllegro<peratom>::init()
 {
   ;
 }
 
-ComputeAllegro::~ComputeAllegro()
+template<int peratom>
+ComputeAllegro<peratom>::~ComputeAllegro()
 {
-  if (!copymode) { memory->destroy(vector); }
+  if (copymode) return;
+  if constexpr (peratom) {
+    memory->destroy(vector_atom);
+  } else {
+    memory->destroy(vector);
+  }
 }
 
-// Force and energy computation
-void ComputeAllegro::compute_vector()
+template<int peratom>
+void ComputeAllegro<peratom>::compute_vector()
 {
-  invoked_peratom = update->ntimestep;
+  invoked_vector = update->ntimestep;
 
-  // printf("extracting %s\n", quantity.c_str()); fflush(stdout);
-  // printf("keys:");
-  // for (auto const& [key,val] : ((PairAllegro<lowhigh> *) force->pair)->custom_output) {
-  //   printf(" %s", key.data());
-  // }
-  // printf("\n"); fflush(stdout);
   const torch::Tensor &quantity_tensor =
       ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().ravel();
 
@@ -97,4 +114,66 @@ void ComputeAllegro::compute_vector()
   for (int i = 0; i < size_vector; i++) { vector[i] = quantity[i]; }
 
   MPI_Allreduce(MPI_IN_PLACE, vector, size_vector, MPI_DOUBLE, MPI_SUM, world);
+}
+
+template<int peratom>
+void ComputeAllegro<peratom>::compute_peratom()
+{
+  invoked_peratom = update->ntimestep;
+
+  if (atom->nmax > nmax) {
+    nmax = atom->nmax;
+    memory->destroy(array_atom);
+    memory->create(array_atom, nmax, nperatom, "allegro/atom:array");
+    if (nperatom==1) vector_atom = &array_atom[0][0];
+  }
+
+  const torch::Tensor &quantity_tensor =
+      ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().contiguous().reshape({-1,nperatom});
+
+  auto quantity = quantity_tensor.accessor<double,2>();
+  quantityptr = quantity_tensor.data_ptr<double>();
+
+  int nlocal = atom->nlocal;
+  for (int i = 0; i < nlocal; i++) {
+    for (int j = 0; j < nperatom; j++) {
+      array_atom[i][j] = quantity[i][j];
+    }
+  }
+  if (newton) comm->reverse_comm(this);
+}
+
+template<int peratom>
+int ComputeAllegro<peratom>::pack_reverse_comm(int n, int first, double *buf)
+{
+  int i, m, last;
+
+  m = 0;
+  last = first + n;
+  for (i = first; i < last; i++) {
+    for (int j = 0; j < nperatom; j++) {
+      buf[m++] = quantityptr[i*nperatom + j];
+    }
+  }
+  return m;
+}
+
+template<int peratom>
+void ComputeAllegro<peratom>::unpack_reverse_comm(int n, int *list, double *buf)
+{
+  int i, j, m;
+
+  m = 0;
+  for (i = 0; i < n; i++) {
+    j = list[i];
+    for (int k = 0; k < nperatom; k++) {
+      array_atom[j][k] += buf[m++];
+    }
+  }
+}
+
+
+namespace LAMMPS_NS {
+  template class ComputeAllegro<0>;
+  template class ComputeAllegro<1>;
 }
