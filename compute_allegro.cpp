@@ -40,10 +40,10 @@ ComputeAllegro::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Compute(lmp,
 {
 
   // compute 1 all allegro quantity length
-  if (narg != 5) error->all(FLERR, "Incorrect args for compute nequip");
+  if (narg != 5) error->all(FLERR, "Incorrect args for compute allegro");
 
   if (strcmp(arg[1], "all") != 0)
-    error->all(FLERR, "compute nequip can only operate on group 'all'");
+    error->all(FLERR, "compute allegro can only operate on group 'all'");
 
   quantity = arg[3];
   vector_flag = 1;
