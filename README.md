@@ -9,7 +9,7 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 and
 > *Scaling the leading accuracy of deep equivariant models to biomolecular simulations of realistic size* <br/>
 > Albert Musaelian, Anders Johansson, Simon Batzner, Boris Kozinsky <br/>
-> https://arxiv.org/abs/2304.10061 <br/>
+> https://doi.org/10.1145/3581784.3627041 <br/>
 
 `pair_allegro` authors: **Anders Johansson**, Albert Musaelian.
 
