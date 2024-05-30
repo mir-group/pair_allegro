@@ -15,7 +15,7 @@ and
 
 ## Pre-requisites
 
-* PyTorch or LibTorch >= 1.11.0;  please note that at present we **only recommend 1.11** on CUDA systems.
+* PyTorch or LibTorch >= 1.11.0;  please note that at present we have only thoroughly tested 1.11 on NVIDIA GPUs (see [#311 for NequIP](https://github.com/mir-group/nequip/discussions/311#discussioncomment-5129513)) and 1.13 on AMD GPUs, but newer 2.x versions *may* also work. With newer versions, setting the environment variable `PYTORCH_JIT_USE_NNC_NOT_NVFUSER=1` sometimes helps.
 
 ## Usage in LAMMPS
 
@@ -32,7 +32,7 @@ To run with Kokkos, please see the [LAMMPS Kokkos documentation](https://docs.la
 ```bash
 mpirun -np 8 lmp -sf kk -k on g 4 -pk kokkos newton on neigh full -in in.script
 ```
-to run on 2 nodes with 4 GPUs each.
+to run on 2 nodes with 4 GPUs *each*.
 
 ### Compute
 We provide an experimental "compute" that allows you to extract custom quantities from Allegro models, such as [polarization](https://arxiv.org/abs/2403.17207). You can extract either global or per-atom properties with syntax along the lines of
@@ -42,22 +42,25 @@ compute polarizability all allegro polarizability 9
 compute borncharges all allegro/atom born_charge 9 1
 ```
 
-The name after `allegro[/atom]` is attempted extracted from the dictionary that the Allegro model returns. The following number is the number of elements after flattening the output. In the examples above, polarization is a 3-element global vector, while polarizability and Born charges are global and per-atom 3x3 matrices, respectively. For per-atom quantities, the second number is a flag indicating whether the properties should be reverse-communicated "Newton-style" like forces, which will depend on your property and the specifics of your implementation.
+The name after `allegro[/atom]` is attempted extracted from the dictionary that the Allegro model returns. The following number is the number of elements after flattening the output. In the examples above, polarization is a 3-element global vector, while polarizability and Born charges are global and per-atom 3x3 matrices, respectively.
+
+For per-atom quantities, the second number is a 1/0 flag indicating whether the properties should be reverse-communicated "Newton-style" like forces, which will depend on your property and the specifics of your implementation.
+
 
 *Note: For extracting multiple quantities, simply use multiple commands. The properties will be extracted from the same dictionary, without any recomputation.*
 
-*Note: The quantities will be attempted extracted at every timestep. In the future, we may add support for passing a flag to the model indicating that the "custom" output should be computed.*
+*Note: The group flag should generally be `all`.*
 
-*Note: The group flag shoul generally be `all`.*
+*Note: Global quantities are assumed extensive and summed across MPI ranks. Keep ghost atoms in mind when trying to think of whether this works for your property; for example, it does not work for Allegro's global energy if there are non-zero energy shifts, as these are also applied to ghost atoms.*
 
 ## Building LAMMPS with this pair style
 
 ### Download LAMMPS
 ```bash
-git clone --depth 1 https://github.com/lammps/lammps
+git clone --depth=1 https://github.com/lammps/lammps
 ```
 or your preferred method.
-(`--depth 1` prevents the entire history of the LAMMPS repository from being downloaded.)
+(`--depth=1` prevents the entire history of the LAMMPS repository from being downloaded.)
 
 ### Download this repository
 ```bash
@@ -108,8 +111,8 @@ Note that the CUDA that comes with PyTorch when installed with `conda` (the `cud
 #### With OpenMP (optional, better performance)
 `pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style, by setting `OMP_NUM_THREADS` and using the [LAMMPS OpenMP package](https://docs.lammps.org/Speed_omp.html).
 
-#### With Kokkos (GPU, optional, best performance)
-`pair_allegro` supports the use of Kokkos to accelerate certain parts of the pair style on the GPU to avoid host-GPU transfers.
+#### With Kokkos (GPU, optional, best performance, most reliable)
+`pair_allegro` supports the use of Kokkos to accelerate the pair style on the GPU and avoid host-GPU transfers.
 `pair_allegro` supports two setups for Kokkos: pair_style and model both on CPU, or both on GPU. Please ensure you build LAMMPS with the appropriate Kokkos backends enabled for your usecase. For example, to use CUDA GPUs, add:
 ```
 -DPKG_KOKKOS=ON -DKokkos_ENABLE_CUDA=ON
@@ -146,4 +149,4 @@ This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in 
     Exception: Argument passed to at() was not in the map
     ```
 
-    A: We now require models to have been trained with stress support, which is achieved by replacing `ForceOutput` with `StressForceOutput` in the training configuration. Note that you do not need to train on stress (though it may improve your potential, assuming your stress data is correct and converged). If you desperately wish to keep using a model without stress output, you can remove lines that look like [these](https://github.com/mir-group/pair_allegro/blob/99036043e74376ac52993b5323f193dee3f4f401/pair_allegro_kokkos.cpp#L332-L343) in your version of `pair_allegro[_kokkos].cpp`.
+    A: We now require models to have been trained with stress support, which is achieved by replacing `ForceOutput` with `StressForceOutput` in the training configuration. Note that you do not need to train on stress (though it may improve your potential, assuming your stress data is correct and converged). If you desperately wish to keep using a model without stress output, there are two options: 1) Remove lines that look like [these](https://github.com/mir-group/pair_allegro/blob/99036043e74376ac52993b5323f193dee3f4f401/pair_allegro_kokkos.cpp#L332-L343) in your version of `pair_allegro[_kokkos].cpp` 2) Redeploy the model with an updated config file, as described [here](https://github.com/mir-group/nequip/issues/69#issuecomment-1129273665).
