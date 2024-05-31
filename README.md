@@ -11,7 +11,7 @@ For more details on Allegro itself, background, and the LAMMPS pair style please
 
 ## Pre-requisites
 
-* PyTorch or LibTorch >= 1.10.0
+* PyTorch or LibTorch >= 1.11.0
 
 ## Usage in LAMMPS
 

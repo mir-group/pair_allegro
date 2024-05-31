@@ -224,32 +224,23 @@ void PairAllegro<precision>::coeff(int narg, char **arg) {
     #endif
   }
 
-  #if (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR <= 10)
-    // Set JIT bailout to avoid long recompilations for many steps
-    size_t jit_bailout_depth;
-    if (metadata["_jit_bailout_depth"].empty()) {
-      // This is the default used in the Python code
-      jit_bailout_depth = 2;
-    } else {
-      jit_bailout_depth = std::stoi(metadata["_jit_bailout_depth"]);
-    }
-    torch::jit::getBailoutDepth() = jit_bailout_depth;
-  #else
-    // In PyTorch >=1.11, this is now set_fusion_strategy
-    torch::jit::FusionStrategy strategy;
-    if (metadata["_jit_fusion_strategy"].empty()) {
-      // This is the default used in the Python code
-      strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
-    } else {
-      std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
-      std::string fusion_type, fusion_depth;
-      while(std::getline(strat_stream, fusion_type, ',')) {
-        std::getline(strat_stream, fusion_depth, ';');
-        strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
-      }
-    }
-    torch::jit::setFusionStrategy(strategy);
-  #endif
+  // In PyTorch >=1.11, this is now set_fusion_strategy
+  torch::jit::FusionStrategy strategy;
+  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
+  //strategy = {{torch::jit::FusionBehavior::STATIC, 100}, {torch::jit::FusionBehavior::DYNAMIC, 1}};
+
+  //if (metadata["_jit_fusion_strategy"].empty()) { //TODO: respect model
+  //  // This is the default used in the Python code
+  //  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
+  //} else {
+  //  std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
+  //  std::string fusion_type, fusion_depth;
+  //  while(std::getline(strat_stream, fusion_type, ',')) {
+  //    std::getline(strat_stream, fusion_depth, ';');
+  //    strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
+  //  }
+  //}
+  torch::jit::setFusionStrategy(strategy);
 
   // Set whether to allow TF32:
   bool allow_tf32;
@@ -473,9 +464,9 @@ void PairAllegro<precision>::compute(int eflag, int vflag){
   for(int ii = 0; ii < ntotal; ii++){
     int i = ilist[ii];
 
-    f[i][0] = forces[i][0];
-    f[i][1] = forces[i][1];
-    f[i][2] = forces[i][2];
+    f[i][0] += forces[i][0];
+    f[i][1] += forces[i][1];
+    f[i][2] += forces[i][2];
     if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i][0];
     if(ii < inum) eng_vdwl += atomic_energies[i][0];
   }

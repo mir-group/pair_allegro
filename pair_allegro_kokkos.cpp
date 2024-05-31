@@ -281,9 +281,9 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
   Kokkos::parallel_reduce("Allegro: store forces",
       Kokkos::RangePolicy<DeviceType>(0, ignum),
       KOKKOS_LAMBDA(const int i, double &eng_vdwl){
-        f(i,0) = d_forces(i,0);
-        f(i,1) = d_forces(i,1);
-        f(i,2) = d_forces(i,2);
+        f(i,0) += d_forces(i,0);
+        f(i,1) += d_forces(i,1);
+        f(i,2) += d_forces(i,2);
         if(eflag_atom && i < inum){
           d_eatom(i) = d_atomic_energy(i);
         }
