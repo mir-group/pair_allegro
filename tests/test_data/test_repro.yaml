@@ -2,10 +2,14 @@ run_name: minimal
 seed: 123
 dataset_seed: 456
 
+default_dtype: float64
+model_dtype: float32
+allow_tf32: false
+
 model_builders:
  - allegro.model.Allegro
  - PerSpeciesRescale
- - ForceOutput
+ - StressForceOutput
  - RescaleEnergyEtc
 
 avg_num_neighbors: auto
@@ -15,27 +19,24 @@ parity: o3_full
 # Allegro layers:
 num_layers: 2
 env_embed_multiplicity: 8
-embed_initial_edge: true
-linear_after_env_embed: false
 
-two_body_latent_mlp_latent_dimensions: [32, 32]
+two_body_latent_mlp_latent_dimensions: [64, 64]
 two_body_latent_mlp_nonlinearity: silu
-two_body_latent_mlp_initialization: uniform
+two_body_latent_mlp_initialization: normal  # normal is closer to a trained weight distribution for numerics
 
-latent_mlp_latent_dimensions: [32]
+latent_mlp_latent_dimensions: [64, 64]
 latent_mlp_nonlinearity: silu
-latent_mlp_initialization: uniform
-latent_resnet: true
+latent_mlp_initialization: normal
 
 env_embed_mlp_latent_dimensions: []
 env_embed_mlp_nonlinearity: null
-env_embed_mlp_initialization: uniform
+env_embed_mlp_initialization: normal
 # - end allegro layers -
 
 # Final MLP to go from Allegro latent space to edge energies:
-edge_eng_mlp_latent_dimensions: [8]
+edge_eng_mlp_latent_dimensions: [64]
 edge_eng_mlp_nonlinearity: null
-edge_eng_mlp_initialization: uniform
+edge_eng_mlp_initialization: normal
 
 dataset: ase
 dataset_file_name: aspirin.xyz

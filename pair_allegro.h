@@ -11,9 +11,14 @@
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
 
+
 #ifdef PAIR_CLASS
 
-PairStyle(allegro,PairAllegro)
+PairStyle(allegro,PairAllegro<lowhigh>)
+PairStyle(allegro3232,PairAllegro<lowlow>)
+PairStyle(allegro6464,PairAllegro<highhigh>)
+PairStyle(allegro3264,PairAllegro<lowhigh>)
+PairStyle(allegro6432,PairAllegro<highlow>)
 
 #else
 
@@ -24,9 +29,15 @@ PairStyle(allegro,PairAllegro)
 
 #include <torch/torch.h>
 #include <vector>
+#include <type_traits>
+#include <map>
+#include <string>
+
+enum Precision {lowlow, highhigh, lowhigh, highlow};
 
 namespace LAMMPS_NS {
 
+template<Precision precision>
 class PairAllegro : public Pair {
  public:
   PairAllegro(class LAMMPS *);
@@ -45,8 +56,20 @@ class PairAllegro : public Pair {
 
   int batch_size = -1;
 
+  typedef typename std::conditional_t<precision==lowlow || precision==lowhigh, float, double> inputtype;
+  typedef typename std::conditional_t<precision==lowlow || precision==highlow, float, double> outputtype;
+
+  torch::ScalarType inputtorchtype = torch::CppTypeToScalarType<inputtype>();
+  torch::ScalarType outputtorchtype = torch::CppTypeToScalarType<outputtype>();
+
+  std::vector<std::string> custom_output_names;
+  std::map<std::string, torch::Tensor> custom_output;
+  void add_custom_output(std::string);
+
  protected:
   int debug_mode = 0;
+
+  double** cutoff_matrix;
 
 };
 

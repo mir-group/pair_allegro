@@ -50,26 +50,25 @@ fi
 if [ "$do_e_mode" = true ]
 then
     echo "Making source symlinks (-e)..."
-    for file in pair_allegro.*; do
+    for file in *_allegro.*; do
         ln -s `realpath -s $file` $lammps_dir/src/$file
     done
-    for file in pair_allegro_kokkos.*; do
+    for file in *_allegro_kokkos.*; do
         ln -s `realpath -s $file` $lammps_dir/src/KOKKOS/$file
     done
 else
     echo "Copying files..."
-    for file in pair_allegro.*; do
+    for file in *_allegro.*; do
         cp $file $lammps_dir/src/$file
     done
-    for file in pair_allegro_kokkos.*; do
+    for file in *_allegro_kokkos.*; do
         cp $file $lammps_dir/src/KOKKOS/$file
     done
 fi
 
 echo "Updating CMakeLists.txt..."
 
-# Update CMakeLists.txt
-sed -i "s/set(CMAKE_CXX_STANDARD 1.)/set(CMAKE_CXX_STANDARD 14)/" $lammps_dir/cmake/CMakeLists.txt
+sed -i "s/set(CMAKE_CXX_STANDARD 11)/set(CMAKE_CXX_STANDARD 17)/" $lammps_dir/cmake/CMakeLists.txt
 
 # Add libtorch
 cat >> $lammps_dir/cmake/CMakeLists.txt << "EOF2"

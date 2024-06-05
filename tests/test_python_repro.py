@@ -1,14 +1,11 @@
 import pytest
 
 import os
-import sys
 import tempfile
 import subprocess
 from pathlib import Path
 import numpy as np
-import yaml
 import textwrap
-import warnings
 from io import StringIO
 from collections import Counter
 
@@ -19,118 +16,16 @@ import ase.io
 import torch
 
 from nequip.ase import NequIPCalculator
-from nequip.utils import Config
-from nequip.data import dataset_from_config, AtomicData, AtomicDataDict
+from nequip.data import AtomicData, AtomicDataDict
 
-TESTS_DIR = Path(__file__).resolve().parent
-LAMMPS = os.environ.get("LAMMPS", "lmp")
-_lmp_help = subprocess.run([LAMMPS, "-h"], stdout=subprocess.PIPE, check=True).stdout
-HAS_KOKKOS: bool = b"allegro/kk" in _lmp_help
-HAS_OPENMP: bool = b"OPENMP" in _lmp_help
-
-if not HAS_KOKKOS:
-    warnings.warn("Not testing pair_allegro with Kokkos since it wasn't built with it")
-if not HAS_OPENMP:
-    warnings.warn(
-        "Not testing pair_allegro with OpenMP since LAMMPS wasn't built with the OPENMP package"
-    )
-
-
-@pytest.fixture(
-    params=[
-        ("CuPd-cubic-big.xyz", "CuPd", ["Cu", "Pd"], 5.1, n_rank)
-        for n_rank in (1, 2, 4)
-    ]
-    + [
-        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 4.0, 1),
-        ("aspirin.xyz", "aspirin", ["C", "H", "O"], 15.0, 1),
-        ("Cu2AgO4.xyz", "mp-1225882", ["Cu", "Ag", "O"], 4.9, 1),
-        ("Cu-cubic.xyz", "Cu", ["Cu"], 4.5, 1),
-        ("Cu-cubic.xyz", "Cu", ["Cu"], 15.5, 1),
-    ],
-    scope="module",
+from conftest import (
+    _check_and_print,
+    LAMMPS,
+    LAMMPS_ENV_PREFIX,
+    HAS_KOKKOS,
+    HAS_KOKKOS_CUDA,
+    HAS_OPENMP,
 )
-def dataset_options(request):
-    out = dict(
-        zip(
-            ["dataset_file_name", "run_name", "chemical_symbols", "r_max"],
-            request.param,
-        )
-    )
-    out["dataset_file_name"] = TESTS_DIR / ("test_data/" + out["dataset_file_name"])
-    return out, request.param[-1]
-
-
-@pytest.fixture(
-    params=[
-        187382,
-        109109,
-    ],
-    scope="module",
-)
-def model_seed(request):
-    return request.param
-
-
-def _check_and_print(retcode):
-    __tracebackhide__ = True
-    if retcode.returncode:
-        if len(retcode.stdout) > 0:
-            print(retcode.stdout.decode("ascii"))
-        if len(retcode.stderr) > 0:
-            print(retcode.stderr.decode("ascii"), file=sys.stderr)
-        retcode.check_returncode()
-
-
-@pytest.fixture(scope="module")
-def deployed_model(model_seed, dataset_options):
-    dataset_options, n_rank = dataset_options
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = Config.from_file(str(TESTS_DIR / "test_data/test_repro.yaml"))
-        config.update(dataset_options)
-        config["seed"] = model_seed
-        config["root"] = tmpdir + "/root"
-        configpath = tmpdir + "/config.yaml"
-        with open(configpath, "w") as f:
-            yaml.dump(dict(config), f)
-        # run a nequip-train command
-        retcode = subprocess.run(
-            ["nequip-train", configpath],
-            cwd=tmpdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        _check_and_print(retcode)
-        # run nequip-deploy
-        deployed_path = tmpdir + "/deployed.pth"
-        retcode = subprocess.run(
-            [
-                "nequip-deploy",
-                "build",
-                "--train-dir",
-                config["root"] + "/" + config["run_name"],
-                deployed_path,
-            ],
-            cwd=tmpdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        _check_and_print(retcode)
-        # load structures to test on
-        d = dataset_from_config(config)
-        # take some frames
-        structures = [d[i].to_ase(type_mapper=d.type_mapper) for i in range(5)]
-        # give them cells even if nonperiodic
-        if not all(structures[0].pbc):
-            L = 50.0
-            for struct in structures:
-                struct.cell = L * np.eye(3)
-                struct.center()
-        for s in structures:
-            s.rattle(stdev=0.2)
-            s.wrap()
-        structures = structures[:1]
-        yield deployed_path, structures, config, n_rank
 
 
 @pytest.mark.parametrize(
@@ -181,9 +76,11 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
 
         compute atomicenergies all pe/atom
         compute totalatomicenergy all reduce sum c_atomicenergies
+        compute stress all pressure NULL virial  # NULL means without temperature contribution
 
-        thermo_style custom step time temp pe c_totalatomicenergy etotal press spcpu cpuremain
+        thermo_style custom step time temp pe c_totalatomicenergy etotal press spcpu cpuremain c_stress[*]
         run 0
+        print "$({PRECISION_CONST} * c_stress[1]) $({PRECISION_CONST} * c_stress[2]) $({PRECISION_CONST} * c_stress[3]) $({PRECISION_CONST} * c_stress[4]) $({PRECISION_CONST} * c_stress[5]) $({PRECISION_CONST} * c_stress[6])" file stress.dat
         print $({PRECISION_CONST} * pe) file pe.dat
         print $({PRECISION_CONST} * c_totalatomicenergy) file totalatomicenergy.dat
         write_dump all custom output.dump id type x y z fx fy fz c_atomicenergies modify format float %20.15g
@@ -211,45 +108,51 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
             # run LAMMPS
             OMP_NUM_THREADS = 4  # just some choice
             retcode = subprocess.run(
-                # MPI options if MPI
-                # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
-                # > Alternatively, you can use the --oversubscribe option to ignore the
-                # > number of available slots when deciding the number of processes to
-                # > launch.
-                (
-                    ["mpirun", "--oversubscribe", "-np", str(n_rank)]
-                    if n_rank > 1
-                    else []
-                )
-                # LAMMPS exec
-                + [LAMMPS]
-                # Kokkos options if Kokkos
-                + (
-                    [
-                        "-sf",
-                        "kk",
-                        "-k",
-                        "on",
-                        ("g" if torch.cuda.is_available() else "t"),
-                        str(
-                            max(torch.cuda.device_count() // n_rank, 1)
-                            if torch.cuda.is_available()
-                            else OMP_NUM_THREADS
-                        ),
-                        "-pk",
-                        "kokkos newton on neigh full",
-                    ]
-                    if kokkos
-                    else []
-                )
-                # OpenMP options if openmp
-                + (["-sf", "omp", "-pk", "omp", str(OMP_NUM_THREADS)] if openmp else [])
-                # input
-                + ["-in", infile_path],
+                " ".join(
+                    # Allow user to specify prefix to set up environment before mpirun. For example,
+                    # using `LAMMPS_ENV_PREFIX="conda run -n whatever"` to run LAMMPS in a different
+                    # conda environment.
+                    [LAMMPS_ENV_PREFIX]
+                    +
+                    # MPI options if MPI
+                    # --oversubscribe necessary for GitHub Actions since it only gives 2 slots
+                    # > Alternatively, you can use the --oversubscribe option to ignore the
+                    # > number of available slots when deciding the number of processes to
+                    # > launch.
+                    ["mpirun", "--oversubscribe", "-np", str(n_rank), LAMMPS]
+                    # Kokkos options if Kokkos
+                    + (
+                        [
+                            "-sf",
+                            "kk",
+                            "-k",
+                            "on",
+                            ("g" if HAS_KOKKOS_CUDA else "t"),
+                            str(
+                                max(torch.cuda.device_count() // n_rank, 1)
+                                if HAS_KOKKOS_CUDA
+                                else OMP_NUM_THREADS
+                            ),
+                            "-pk",
+                            "kokkos newton on neigh full",
+                        ]
+                        if kokkos
+                        else []
+                    )
+                    # OpenMP options if openmp
+                    + (
+                        ["-sf", "omp", "-pk", "omp", str(OMP_NUM_THREADS)]
+                        if openmp
+                        else []
+                    )
+                    # input
+                    + ["-in", infile_path]
+                ),
                 cwd=tmpdir,
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                shell=True,
             )
             _check_and_print(retcode)
 
@@ -384,3 +287,27 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 lammps_pe,
                 atol=1e-6,
             )
+            # in `metal` units, pressure/stress has units bars
+            # so need to convert
+            lammps_stress = np.fromstring(
+                Path(tmpdir + f"/stress.dat").read_text(), sep=" ", dtype=np.float64
+            ) * (ase.units.bar / PRECISION_CONST)
+            # https://docs.lammps.org/compute_pressure.html
+            # > The ordering of values in the symmetric pressure tensor is as follows: pxx, pyy, pzz, pxy, pxz, pyz.
+            lammps_stress = np.array(
+                [
+                    [lammps_stress[0], lammps_stress[3], lammps_stress[4]],
+                    [lammps_stress[3], lammps_stress[1], lammps_stress[5]],
+                    [lammps_stress[4], lammps_stress[5], lammps_stress[2]],
+                ]
+            )
+            if periodic:
+                # In LAMMPS, the convention is that the stress tensor, and thus the pressure, is related to the virial
+                # WITHOUT a sign change.  In `nequip`, we chose currently to follow the virial = -stress x volume
+                # convention => stress = -1/V * virial.  ASE does not change the sign of the virial, so we have
+                # to flip the sign from ASE for the comparison.
+                assert np.allclose(
+                    -structure.get_stress(voigt=False),
+                    lammps_stress,
+                    atol=1e-5,
+                )
