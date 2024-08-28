@@ -335,6 +335,9 @@ template <Precision precision> void PairAllegro<precision>::compute(int eflag, i
   // Neighbor list per atom
   int **firstneigh = list->firstneigh;
 
+  // Skip calculation if empty domain
+  if (inum==0) return;
+
   // Total number of bonds (sum of number of neighbors)
   int nedges = 0;
 

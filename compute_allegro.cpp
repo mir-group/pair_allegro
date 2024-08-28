@@ -101,18 +101,27 @@ void ComputeAllegro<peratom>::compute_vector()
 {
   invoked_vector = update->ntimestep;
 
-  const torch::Tensor &quantity_tensor =
-      ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().ravel();
+  // empty domain, pair style won't store tensor
+  // note: assumes nlocal == inum
+  if (atom->nlocal == 0) {
+    for (int i = 0; i < size_vector; i++) {
+      vector[i] = 0.0;
+    }
+  } else {
+    const torch::Tensor &quantity_tensor =
+        ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().ravel();
 
-  auto quantity = quantity_tensor.data_ptr<double>();
+    auto quantity = quantity_tensor.data_ptr<double>();
 
-  if (quantity_tensor.size(0) != size_vector) {
-    error->one(FLERR, "size {} of quantity tensor {} does not match expected {} on rank {}",
-               quantity_tensor.size(0), this->quantity, size_vector, comm->me);
+    if (quantity_tensor.size(0) != size_vector) {
+      error->one(FLERR, "size {} of quantity tensor {} does not match expected {} on rank {}",
+                 quantity_tensor.size(0), this->quantity, size_vector, comm->me);
+    }
+
+    for (int i = 0; i < size_vector; i++) { vector[i] = quantity[i]; }
   }
 
-  for (int i = 0; i < size_vector; i++) { vector[i] = quantity[i]; }
-
+  // even if empty domain
   MPI_Allreduce(MPI_IN_PLACE, vector, size_vector, MPI_DOUBLE, MPI_SUM, world);
 }
 
@@ -128,18 +137,23 @@ void ComputeAllegro<peratom>::compute_peratom()
     if (nperatom==1) vector_atom = &array_atom[0][0];
   }
 
-  const torch::Tensor &quantity_tensor =
-      ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().contiguous().reshape({-1,nperatom});
+  // guard against empty domain (pair style won't store tensor)
+  if (atom->nlocal > 0) {
+    const torch::Tensor &quantity_tensor =
+        ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().contiguous().reshape({-1,nperatom});
 
-  auto quantity = quantity_tensor.accessor<double,2>();
-  quantityptr = quantity_tensor.data_ptr<double>();
+    auto quantity = quantity_tensor.accessor<double,2>();
+    quantityptr = quantity_tensor.data_ptr<double>();
 
-  int nlocal = atom->nlocal;
-  for (int i = 0; i < nlocal; i++) {
-    for (int j = 0; j < nperatom; j++) {
-      array_atom[i][j] = quantity[i][j];
+    int nlocal = atom->nlocal;
+    for (int i = 0; i < nlocal; i++) {
+      for (int j = 0; j < nperatom; j++) {
+        array_atom[i][j] = quantity[i][j];
+      }
     }
   }
+
+  // even if empty domain
   if (newton) comm->reverse_comm(this);
 }
 

@@ -68,6 +68,8 @@ fi
 
 echo "Updating CMakeLists.txt..."
 
+sed -i "s/set(CMAKE_CXX_STANDARD 11)/set(CMAKE_CXX_STANDARD 17)/" $lammps_dir/cmake/CMakeLists.txt
+
 # Add libtorch
 cat >> $lammps_dir/cmake/CMakeLists.txt << "EOF2"
 
