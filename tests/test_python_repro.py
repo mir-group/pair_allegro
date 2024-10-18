@@ -134,7 +134,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                                 else OMP_NUM_THREADS
                             ),
                             "-pk",
-                            "kokkos newton on neigh full",
+                            "kokkos newton on neigh half",
                         ]
                         if kokkos
                         else []

@@ -404,8 +404,8 @@ void PairAllegroKokkos<nequip_mode>::init_style()
   request->set_kokkos_device(std::is_same<DeviceType,LMPDeviceType>::value);
 
   neighflag = this->lmp->kokkos->neighflag;
-  if (neighflag != FULL) {
-    this->error->all(FLERR,"Needs full neighbor list style with pair_allegro/kk");
+  if (neighflag == FULL) {
+    this->error->all(FLERR,"pair style allegro/kk requires the 'neigh half' flag due to 'newton on'");
   }
 }
 
