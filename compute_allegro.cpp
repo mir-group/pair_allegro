@@ -76,7 +76,7 @@ ComputeAllegro<peratom>::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Com
     error->all(FLERR, "no pair style; compute allegro must be defined after pair style");
   }
 
-  ((PairAllegro<lowhigh> *) force->pair)->add_custom_output(quantity);
+  ((PairAllegro<0> *) force->pair)->add_custom_output(quantity);
 }
 
 template<int peratom>
@@ -109,7 +109,7 @@ void ComputeAllegro<peratom>::compute_vector()
     }
   } else {
     const torch::Tensor &quantity_tensor =
-        ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().ravel();
+        ((PairAllegro<0> *) force->pair)->custom_output.at(quantity).cpu().ravel();
 
     auto quantity = quantity_tensor.data_ptr<double>();
 
@@ -140,7 +140,7 @@ void ComputeAllegro<peratom>::compute_peratom()
   // guard against empty domain (pair style won't store tensor)
   if (atom->nlocal > 0) {
     const torch::Tensor &quantity_tensor =
-        ((PairAllegro<lowhigh> *) force->pair)->custom_output.at(quantity).cpu().contiguous().reshape({-1,nperatom});
+        ((PairAllegro<0> *) force->pair)->custom_output.at(quantity).cpu().contiguous().reshape({-1,nperatom});
 
     auto quantity = quantity_tensor.accessor<double,2>();
     quantityptr = quantity_tensor.data_ptr<double>();

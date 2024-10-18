@@ -13,11 +13,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro/kk,PairAllegroKokkos<lowhigh>)
-PairStyle(allegro3232/kk,PairAllegroKokkos<lowlow>)
-PairStyle(allegro6464/kk,PairAllegroKokkos<highhigh>)
-PairStyle(allegro3264/kk,PairAllegroKokkos<lowhigh>)
-PairStyle(allegro6432/kk,PairAllegroKokkos<highlow>)
+PairStyle(allegro/kk,PairAllegroKokkos<0>)
 
 #else
 
@@ -27,21 +23,13 @@ PairStyle(allegro6432/kk,PairAllegroKokkos<highlow>)
 #include "pair_allegro.h"
 #include <pair_kokkos.h>
 
-struct TagSingleBond{};
-struct TagB2{};
-struct TagBetaB2{};
-struct TagNorm2{};
-struct Tagw{};
-struct Tagu{};
-struct TagF{};
-struct TagStoreF{};
 
 namespace LAMMPS_NS {
 
-template<Precision precision>
-class PairAllegroKokkos : public PairAllegro<precision> {
+template<int nequip_mode>
+class PairAllegroKokkos : public PairAllegro<nequip_mode> {
  public:
-  typedef PairAllegro<precision> super;
+  typedef PairAllegro<nequip_mode> super;
   using DeviceType = LMPDeviceType;
   using MemberType = typename Kokkos::TeamPolicy<DeviceType>::member_type;
   enum {EnabledNeighFlags=FULL|HALFTHREAD|HALF};

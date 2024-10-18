@@ -14,11 +14,8 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro,PairAllegro<lowhigh>)
-PairStyle(allegro3232,PairAllegro<lowlow>)
-PairStyle(allegro6464,PairAllegro<highhigh>)
-PairStyle(allegro3264,PairAllegro<lowhigh>)
-PairStyle(allegro6432,PairAllegro<highlow>)
+PairStyle(nequip,PairAllegro<1>)
+PairStyle(allegro,PairAllegro<0>)
 
 #else
 
@@ -33,11 +30,10 @@ PairStyle(allegro6432,PairAllegro<highlow>)
 #include <map>
 #include <string>
 
-enum Precision {lowlow, highhigh, lowhigh, highlow};
 
 namespace LAMMPS_NS {
 
-template<Precision precision>
+template<int nequip_mode>
 class PairAllegro : public Pair {
  public:
   PairAllegro(class LAMMPS *);
@@ -56,8 +52,8 @@ class PairAllegro : public Pair {
 
   int batch_size = -1;
 
-  typedef typename std::conditional_t<precision==lowlow || precision==lowhigh, float, double> inputtype;
-  typedef typename std::conditional_t<precision==lowlow || precision==highlow, float, double> outputtype;
+  typedef float inputtype;
+  typedef double outputtype;
 
   torch::ScalarType inputtorchtype = torch::CppTypeToScalarType<inputtype>();
   torch::ScalarType outputtorchtype = torch::CppTypeToScalarType<outputtype>();
@@ -71,6 +67,10 @@ class PairAllegro : public Pair {
 
   double** cutoff_matrix;
 
+  c10::Dict<std::string, torch::Tensor> preprocess();
+
+  torch::Tensor get_cell();
+  void get_tag2i(std::vector<int>&);
 };
 
 }

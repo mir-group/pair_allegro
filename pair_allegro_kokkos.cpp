@@ -54,8 +54,8 @@ namespace Kokkos {
 
 /* ---------------------------------------------------------------------- */
 
-template<Precision precision>
-PairAllegroKokkos<precision>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro<precision>(lmp)
+template<int nequip_mode>
+PairAllegroKokkos<nequip_mode>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro<nequip_mode>(lmp)
 {
   this->respa_enable = 0;
 
@@ -70,8 +70,8 @@ PairAllegroKokkos<precision>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro<preci
    check if allocated, since class can be destructed when incomplete
 ------------------------------------------------------------------------- */
 
-template<Precision precision>
-PairAllegroKokkos<precision>::~PairAllegroKokkos()
+template<int nequip_mode>
+PairAllegroKokkos<nequip_mode>::~PairAllegroKokkos()
 {
   if (!this->copymode) {
     this->memoryKK->destroy_kokkos(k_eatom,this->eatom);
@@ -83,8 +83,8 @@ PairAllegroKokkos<precision>::~PairAllegroKokkos()
 
 /* ---------------------------------------------------------------------- */
 
-template<Precision precision>
-void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
+template<int nequip_mode>
+void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
 {
   eflag = eflag_in;
   vflag = vflag_in;
@@ -365,8 +365,8 @@ void PairAllegroKokkos<precision>::compute(int eflag_in, int vflag_in)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-template<Precision precision>
-void PairAllegroKokkos<precision>::coeff(int narg, char **arg)
+template<int nequip_mode>
+void PairAllegroKokkos<nequip_mode>::coeff(int narg, char **arg)
 {
   super::coeff(narg,arg);
   int ntypes = this->atom->ntypes;
@@ -393,8 +393,8 @@ void PairAllegroKokkos<precision>::coeff(int narg, char **arg)
    init specific to this pair style
 ------------------------------------------------------------------------- */
 
-template<Precision precision>
-void PairAllegroKokkos<precision>::init_style()
+template<int nequip_mode>
+void PairAllegroKokkos<nequip_mode>::init_style()
 {
   super::init_style();
 
@@ -412,9 +412,6 @@ void PairAllegroKokkos<precision>::init_style()
 
 
 namespace LAMMPS_NS {
-template class PairAllegroKokkos<lowlow>;
-template class PairAllegroKokkos<highhigh>;
-template class PairAllegroKokkos<lowhigh>;
-template class PairAllegroKokkos<highlow>;
+template class PairAllegroKokkos<0>;
 }
 
