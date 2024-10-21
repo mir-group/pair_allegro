@@ -26,7 +26,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install torch --index-url https://download.pytorch.org/whl/cpu
         pip install pytest
-        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$(pip show torch | awk '/Version/ {print $2;}')%2Bcpu.zip -O libtorch.zip
+        torch=$(pip show torch | awk '/Version/ {split($2, v, "+"); print v[1];}') # support 2.5.0+cpu
+        echo torch version: ${torch}
+        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-${torch}%2Bcpu.zip -O libtorch.zip
         unzip libtorch.zip
     - name: Install MPI
       run: |
