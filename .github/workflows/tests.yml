@@ -26,8 +26,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install torch --index-url https://download.pytorch.org/whl/cpu
         pip install pytest
-        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-latest%2Bcpu.zip
-        unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
+        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-latest%2Bcpu.zip -O libtorch.zip
+        unzip libtorch.zip
     - name: Install MPI
       run: |
         sudo apt install -y libopenmpi-dev --fix-missing
