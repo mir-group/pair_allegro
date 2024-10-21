@@ -14,8 +14,8 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(nequip,PairAllegro<1>)
-PairStyle(allegro,PairAllegro<0>)
+PairStyle(nequip,PairNequIPAllegro<1>)
+PairStyle(allegro,PairNequIPAllegro<0>)
 
 #else
 
@@ -34,10 +34,10 @@ PairStyle(allegro,PairAllegro<0>)
 namespace LAMMPS_NS {
 
 template<int nequip_mode>
-class PairAllegro : public Pair {
+class PairNequIPAllegro : public Pair {
  public:
-  PairAllegro(class LAMMPS *);
-  virtual ~PairAllegro();
+  PairNequIPAllegro(class LAMMPS *);
+  virtual ~PairNequIPAllegro();
   virtual void compute(int, int);
   void settings(int, char **);
   virtual void coeff(int, char **);

@@ -27,9 +27,9 @@ PairStyle(allegro/kk,PairAllegroKokkos<0>)
 namespace LAMMPS_NS {
 
 template<int nequip_mode>
-class PairAllegroKokkos : public PairAllegro<nequip_mode> {
+class PairAllegroKokkos : public PairNequIPAllegro<nequip_mode> {
  public:
-  typedef PairAllegro<nequip_mode> super;
+  typedef PairNequIPAllegro<nequip_mode> super;
   using DeviceType = LMPDeviceType;
   using MemberType = typename Kokkos::TeamPolicy<DeviceType>::member_type;
   enum {EnabledNeighFlags=FULL|HALFTHREAD|HALF};

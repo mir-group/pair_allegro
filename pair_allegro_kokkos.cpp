@@ -55,7 +55,7 @@ namespace Kokkos {
 /* ---------------------------------------------------------------------- */
 
 template<int nequip_mode>
-PairAllegroKokkos<nequip_mode>::PairAllegroKokkos(LAMMPS *lmp) : PairAllegro<nequip_mode>(lmp)
+PairAllegroKokkos<nequip_mode>::PairAllegroKokkos(LAMMPS *lmp) : PairNequIPAllegro<nequip_mode>(lmp)
 {
   this->respa_enable = 0;
 

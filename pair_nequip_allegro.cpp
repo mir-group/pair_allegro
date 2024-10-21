@@ -53,7 +53,7 @@
 
 using namespace LAMMPS_NS;
 
-template <int nequip_mode> PairAllegro<nequip_mode>::PairAllegro(LAMMPS *lmp) : Pair(lmp)
+template <int nequip_mode> PairNequIPAllegro<nequip_mode>::PairNequIPAllegro(LAMMPS *lmp) : Pair(lmp)
 {
   restartinfo = 0;
   manybody_flag = 1;
@@ -106,7 +106,7 @@ template <int nequip_mode> PairAllegro<nequip_mode>::PairAllegro(LAMMPS *lmp) : 
   if (debug_mode) std::cout << "Allegro is using device " << device << "\n";
 }
 
-template <int nequip_mode> PairAllegro<nequip_mode>::~PairAllegro()
+template <int nequip_mode> PairNequIPAllegro<nequip_mode>::~PairNequIPAllegro()
 {
   if (copymode) return;
   if (allocated) {
@@ -116,7 +116,7 @@ template <int nequip_mode> PairAllegro<nequip_mode>::~PairAllegro()
   }
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::init_style()
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::init_style()
 {
   if (atom->tag_enable == 0) error->all(FLERR, "Pair style Allegro requires atom IDs");
 
@@ -132,12 +132,12 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::init_style()
   if (nequip_mode && force->newton_pair) error->all(FLERR, "Pair style nequip requires newton pair off");
 }
 
-template <int nequip_mode> double PairAllegro<nequip_mode>::init_one(int i, int j)
+template <int nequip_mode> double PairNequIPAllegro<nequip_mode>::init_one(int i, int j)
 {
   return cutoff;
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::allocate()
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -147,13 +147,13 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::allocate()
   memory->create(cutoff_matrix, n, n, "pair:cutoff_matrix");
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::settings(int narg, char ** /*arg*/)
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::settings(int narg, char ** /*arg*/)
 {
   // "allegro" should be the only word after "pair_style" in the input file.
   if (narg > 0) error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::coeff(int narg, char **arg)
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, char **arg)
 {
   if (!allocated) allocate();
 
@@ -290,7 +290,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::coeff(int narg, char *
 }
 
 // Force and energy computation
-template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int vflag)
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int eflag, int vflag)
 {
   ev_init(eflag, vflag);
 
@@ -368,7 +368,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
   }
 }
 
-template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<nequip_mode>::preprocess() {
+template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAllegro<nequip_mode>::preprocess() {
   // Atom positions, including ghost atoms
   double **x = atom->x;
   // Atom IDs, unique, reproducible, the "real" indices
@@ -563,7 +563,7 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
   return input;
 }
 
-template <int nequip_mode> torch::Tensor PairAllegro<nequip_mode>::get_cell(){
+template <int nequip_mode> torch::Tensor PairNequIPAllegro<nequip_mode>::get_cell(){
   torch::Tensor cell_tensor = torch::zeros({3,3}, torch::TensorOptions().dtype(inputtorchtype));
   auto cell = cell_tensor.accessor<inputtype,2>();
 
@@ -579,7 +579,7 @@ template <int nequip_mode> torch::Tensor PairAllegro<nequip_mode>::get_cell(){
   return cell_tensor;
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::get_tag2i(std::vector<int> &tag2i){
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::get_tag2i(std::vector<int> &tag2i){
   int inum = list->inum;
   int *ilist = list->ilist;
   tagint *tag = atom->tag;
@@ -592,12 +592,12 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::get_tag2i(std::vector<
   }
 }
 
-template <int nequip_mode> void PairAllegro<nequip_mode>::add_custom_output(std::string name)
+template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::add_custom_output(std::string name)
 {
   custom_output_names.push_back(name);
 }
 
 namespace LAMMPS_NS {
-template class PairAllegro<0>;
-template class PairAllegro<1>;
+template class PairNequIPAllegro<0>;
+template class PairNequIPAllegro<1>;
 }    // namespace LAMMPS_NS
