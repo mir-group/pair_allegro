@@ -36,8 +36,8 @@ then
 fi
 
 # Check and produce nice message
-if [ ! -f pair_allegro.cpp ]; then
-    echo "Please run `patch_lammps.sh` from the `pair_allegro` root directory."
+if [ ! -f pair_nequip_allegro.cpp ]; then
+    echo "Please run 'patch_lammps.sh' from the 'pair_allegro' root directory."
     exit 1
 fi
 
