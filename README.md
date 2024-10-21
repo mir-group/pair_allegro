@@ -1,6 +1,6 @@
-# `pair_allegro`: LAMMPS pair style for Allegro
+# `pair_allegro`: LAMMPS pair style for NequIP and Allegro
 
-This pair style allows you to use Allegro models from the [`allegro`](https://github.com/mir-group/allegro) package in LAMMPS simulations. Allegro is designed to enable parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
+This pair style allows you to use Allegro models from the [`nequip`](https://github.com/mir-group/nequip) and [`allegro`](https://github.com/mir-group/allegro) packages in LAMMPS simulations. NequIP is a message-passing graph neural network limited to one MPI rank, while Allegro is a local model and thus supports parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
 
 For more details on Allegro itself, background, and the LAMMPS pair style please see the [`allegro`](https://github.com/mir-group/allegro) package and our paper:
 > *Learning Local Equivariant Representations for Large-Scale Atomistic Dynamics* <br/>
@@ -19,22 +19,30 @@ and
 
 ## Usage in LAMMPS
 
+First define the pair style,
+```
+pair_style	nequip
+```
+for NequIP models and
 ```
 pair_style	allegro
-pair_coeff	* * deployed.pth <Allegro type name for LAMMPS type 1> <Allegro type name for LAMMPS type 2> ...
+```
+for Allegro models. Then specify the model with
+```
+pair_coeff	* * deployed.pth <NequIP/Allegro type name for LAMMPS type 1> <NequIP/Allegro type name for LAMMPS type 2> ...
 ```
 where `deployed.pth` is the filename of your trained, **deployed** model.
 
-The names after the model path `deployed.pth` indicate, in order, the names of the Allegro model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the Allegro model!).
-The given names must be consistent with the names specified in the Allegro training YAML in `chemical_symbol_to_type` or `type_names`. Typically, this will be the chemical symbol for each LAMMPS type.
+The names after the model path `deployed.pth` indicate, in order, the names of the model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the NequIP/Allegro model!).
+The given names must be consistent with the names specified in the training YAML file in `chemical_symbol_to_type` or `type_names`. Typically, this will be the chemical symbol for each LAMMPS type.
 
-To run with Kokkos, please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example:
+To run with Kokkos (only supported for Allegro models), please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example:
 ```bash
 mpirun -np 8 lmp -sf kk -k on g 4 -pk kokkos newton on neigh full -in in.script
 ```
 to run on 2 nodes with 4 GPUs *each*.
 
-### Compute
+### Compute (currently only supported for Allegro models)
 We provide an experimental "compute" that allows you to extract custom quantities from Allegro models, such as [polarization](https://arxiv.org/abs/2403.17207). You can extract either global or per-atom properties with syntax along the lines of
 ```
 compute polarization all allegro polarization 3
@@ -93,15 +101,10 @@ cmake ../cmake -DCMAKE_PREFIX_PATH=/path/to/libtorch
 ```
 
 #### MKL
-CMake will look for MKL automatically. If it cannot find it (`MKL_INCLUDE_DIR` is not found) and you are using a Python environment, a simple solution is to run `conda install mkl-include` or `pip install mkl-include` and append:
+PyTorch's CMake will look for MKL automatically for no reason. If it cannot find it (`MKL_INCLUDE_DIR` is not found), you can set it to some existing path, e.g.
 ```
--DMKL_INCLUDE_DIR="$CONDA_PREFIX/include"
+-DMKL_INCLUDE_DIR=/tmp
 ```
-to the `cmake` command if using a `conda` environment, or
-```
--DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
-```
-if using plain Python and `pip`.
 
 #### CUDA
 CMake will look for CUDA and cuDNN. You may have to explicitly provide the path for your CUDA installation (e.g. `-DCUDA_TOOLKIT_ROOT_DIR=/usr/lib/cuda/`).
@@ -111,13 +114,15 @@ Note that the CUDA that comes with PyTorch when installed with `conda` (the `cud
 #### With OpenMP (optional, better performance)
 `pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style, by setting `OMP_NUM_THREADS` and using the [LAMMPS OpenMP package](https://docs.lammps.org/Speed_omp.html).
 
-#### With Kokkos (GPU, optional, best performance, most reliable)
+#### With Kokkos (GPU-resident, optional, best performance, most reliable)
 `pair_allegro` supports the use of Kokkos to accelerate the pair style on the GPU and avoid host-GPU transfers.
 `pair_allegro` supports two setups for Kokkos: pair_style and model both on CPU, or both on GPU. Please ensure you build LAMMPS with the appropriate Kokkos backends enabled for your usecase. For example, to use CUDA GPUs, add:
 ```
 -DPKG_KOKKOS=ON -DKokkos_ENABLE_CUDA=ON
 ```
 to your `cmake` command. See the [LAMMPS documentation](https://docs.lammps.org/Speed_kokkos.html) for more build options and how to correctly run LAMMPS with Kokkos.
+
+*Note: Kokkos support is currently only available for Allegro models.*
 
 ### Building LAMMPS
 ```bash
