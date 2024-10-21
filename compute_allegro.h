@@ -22,7 +22,6 @@ ComputeStyle(allegro/atom,ComputeAllegro<1>)
 #define LMP_COMPUTE_ALLEGRO_H
 
 #include "compute.h"
-#include "pair_allegro.h"
 
 #include <string>
 

@@ -20,7 +20,7 @@ PairStyle(allegro/kk,PairAllegroKokkos<0>)
 #ifndef LMP_PAIR_ALLEGRO_KOKKOS_H
 #define LMP_PAIR_ALLEGRO_KOKKOS_H
 
-#include "pair_allegro.h"
+#include "pair_nequip_allegro.h"
 #include <pair_kokkos.h>
 
 

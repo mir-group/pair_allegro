@@ -28,7 +28,7 @@
 #include "potential_file_reader.h"
 #include "tokenizer.h"
 #include "update.h"
-#include <pair_allegro.h>
+#include <pair_nequip_allegro.h>
 
 #include <algorithm>
 #include <cassert>
@@ -43,7 +43,6 @@
 #include <torch/torch.h>
 #include <vector>
 
-// TODO: Only if MPI is available
 #include <mpi.h>
 
 // Freezing is broken from C++ in <=1.10; so we've dropped support.

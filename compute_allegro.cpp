@@ -21,7 +21,7 @@
 #include "error.h"
 #include "force.h"
 #include "memory.h"
-#include "pair_allegro.h"
+#include "pair_nequip_allegro.h"
 #include "update.h"
 
 #include <cassert>

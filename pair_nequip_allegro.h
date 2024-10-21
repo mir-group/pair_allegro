@@ -19,8 +19,8 @@ PairStyle(allegro,PairNequIPAllegro<0>)
 
 #else
 
-#ifndef LMP_PAIR_ALLEGRO_H
-#define LMP_PAIR_ALLEGRO_H
+#ifndef LMP_PAIR_NEQUIP_ALLEGRO_H
+#define LMP_PAIR_NEQUIP_ALLEGRO_H
 
 #include "pair.h"
 
