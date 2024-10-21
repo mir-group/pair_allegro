@@ -9,8 +9,6 @@ jobs:
     strategy:
       matrix:
         python-version: [3.9]
-        torch-version: [1.11.0]
-        nequip-branch: ["main"]
 
     steps:
     - uses: actions/checkout@v2
@@ -26,9 +24,9 @@ jobs:
         sudo apt update
         sudo apt install -y cmake
         python -m pip install --upgrade pip
-        pip install torch==${TORCH} -f https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install pytest mkl-include
-        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-$TORCH%2Bcpu.zip
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        pip install pytest
+        wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-latest%2Bcpu.zip
         unzip -q libtorch-cxx11-abi-shared-with-deps-$TORCH+cpu.zip
     - name: Install MPI
       run: |
@@ -39,9 +37,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         pip install "https://github.com/mir-group/nequip/archive/main.zip"
-        # git clone --depth=1 "https://github.com/mir-group/allegro"
-        # cd allegro
-        # pip install .
         pip install "https://github.com/mir-group/allegro/archive/main.zip"
     - name: Fetch and build LAMMPS
       run: |
@@ -53,7 +48,7 @@ jobs:
         cd lammps_dir/lammps/
         mkdir build/
         cd build/
-        cmake ../cmake -DCMAKE_BUILD_TYPE=Release -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=../../../libtorch -DMKL_INCLUDE_DIR=`python -c "import sysconfig;from pathlib import Path;print(Path(sysconfig.get_paths()[\"include\"]).parent)"`
+        cmake ../cmake -DCMAKE_BUILD_TYPE=Release -DPKG_KOKKOS=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_PREFIX_PATH=../../../libtorch -DMKL_INCLUDE_DIR=/tmp
         make -j$(nproc)
         echo "LAMMPS in dir"
         pwd
