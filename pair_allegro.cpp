@@ -204,21 +204,9 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::coeff(int narg, char *
   }
 
   // In PyTorch >=1.11, this is now set_fusion_strategy
+  // TODO: respect model
   torch::jit::FusionStrategy strategy;
   strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
-  //strategy = {{torch::jit::FusionBehavior::STATIC, 100}, {torch::jit::FusionBehavior::DYNAMIC, 1}};
-
-  //if (metadata["_jit_fusion_strategy"].empty()) { //TODO: respect model
-  //  // This is the default used in the Python code
-  //  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 3}};
-  //} else {
-  //  std::stringstream strat_stream(metadata["_jit_fusion_strategy"]);
-  //  std::string fusion_type, fusion_depth;
-  //  while(std::getline(strat_stream, fusion_type, ',')) {
-  //    std::getline(strat_stream, fusion_depth, ';');
-  //    strategy.push_back({fusion_type == "STATIC" ? torch::jit::FusionBehavior::STATIC : torch::jit::FusionBehavior::DYNAMIC, std::stoi(fusion_depth)});
-  //  }
-  //}
   torch::jit::setFusionStrategy(strategy);
 
   // Set whether to allow TF32:
@@ -235,7 +223,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::coeff(int narg, char *
   at::globalContext().setAllowTF32CuDNN(allow_tf32);
 
   if (debug_mode) {
-    std::cout << "Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
+    std::cout << "NequIP/Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
     for (const auto &n : metadata) {
       if (n.first == "type_names")
         std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
@@ -252,7 +240,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::coeff(int narg, char *
     std::cout << "Type mapping:"
               << "\n";
   if (comm->me == 0)
-    std::cout << "Allegro type | Allegro name | LAMMPS type | LAMMPS name"
+    std::cout << "NequIP/Allegro type | NequIP/Allegro name | LAMMPS type | LAMMPS name"
               << "\n";
   for (int i = 0; i < n_species; i++) {
     std::string ele;
@@ -316,14 +304,19 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
   int nghost = list->gnum;
   // Total number of atoms
   int ntotal = inum + nghost;
+
   // Mapping from neigh list ordering to x/f ordering
+  // (in case we want to support pair_coeff other than * * in the future)
   int *ilist = list->ilist;
 
-
+  // create input to model (positions etc)
   auto input = preprocess();
   std::vector<torch::IValue> input_vector(1, input);
+
+  // evaluate model
   auto output = model.forward(input_vector).toGenericDict();
 
+  // extract forces and energies as CPU tensors
   torch::Tensor forces_tensor = output.at("forces").toTensor().cpu();
   auto forces = forces_tensor.accessor<outputtype, 2>();
 
@@ -331,7 +324,10 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
   auto atomic_energies = atomic_energy_tensor.accessor<outputtype, 2>();
   outputtype atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<outputtype>()[0];
 
-
+  // store forces and energy
+  // energy = sum of local atomic energies to avoid energy shift issues for ghost atoms
+  // NequIP only produces forces on local atoms,
+  // Allegro also on ghost atoms, these are reverse communicated w/Newton
   eng_vdwl = 0.0;
   int nforces = nequip_mode ? inum : ntotal;
 #pragma omp parallel for reduction(+ : eng_vdwl)
@@ -357,7 +353,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
     virial[4] = v[0][0][2];
     virial[5] = v[0][1][2];
   }
-  if (vflag_atom) { error->all(FLERR, "Pair style Allegro does not support per-atom virial"); }
+  if (vflag_atom) { error->all(FLERR, "Pair styles nequip and allegro do not support per-atom virial"); }
 
   if (debug_mode && 2<1) {
     std::cout << "ALLEGRO CUSTOM OUTPUT" << std::endl;
@@ -368,7 +364,6 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
 
   for (const std::string &output_name : custom_output_names) {
     if (!output.contains(output_name)) error->all(FLERR, "missing {}", output_name);
-    // printf("pair_allegro inserting %s\n", output_name.data()); fflush(stdout);
     custom_output.insert_or_assign(output_name, output.at(output_name).toTensor().detach());
   }
 }
@@ -422,8 +417,7 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
 
       double cutij =
           cutoff_matrix[type[i] - 1]
-                       [type[j] - 1];    // cutoff_matrix[(type[i]-1)*ntypes + type[j]-1];
-      //printf("i=%5d j=%5d ti=%d tj=%d cut=%.2f\n", i, j, type[i], type[j], cutij);
+                       [type[j] - 1];
       if (rsq <= cutij * cutij) {
         neigh_per_atom[ii]++;
         nedges++;
@@ -437,6 +431,9 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
   for (int ii = 1; ii < nlocal; ii++) {
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii - 1] + neigh_per_atom[ii - 1];
   }
+
+  // NequIP only needs positions and types of local atoms,
+  // Allegro also needs ghost atom info
 
   torch::Tensor pos_tensor =
       torch::zeros({nequip_mode ? inum : ntotal, 3}, torch::TensorOptions().dtype(inputtorchtype));
@@ -455,11 +452,20 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
   inputtype* edge_cell_shifts, *cell_inv;
   inputtype periodic_shift[3];
   if (nequip_mode) {
+    // cell for NequIP
     cell_tensor = get_cell();
     cell_inv_tensor = cell_tensor.inverse().transpose(0,1);
     cell_inv = cell_inv_tensor.data_ptr<inputtype>();
+
+    // edge cell shifts for NequIP;
+    // the integer number of lattice vectors to add to x[j]-x[i]
+    // for each edge
+    // (note: x[j] and x[i] always within box, local atoms)
     edge_cell_shifts_tensor = torch::zeros({nedges,3}, torch::TensorOptions().dtype(inputtorchtype));
     edge_cell_shifts = edge_cell_shifts_tensor.data_ptr<inputtype>();
+
+    // get tag mapping for NequIP
+    // note: from 1 to nlocal (inclusive) since tags are 1-based
     get_tag2i(tag2i);
   }
 
@@ -507,8 +513,10 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
       if (rsq > cutij * cutij) { continue; }
 
       edges[0][edge_counter] = i;
-      edges[1][edge_counter] = nequip_mode ? tag2i[jtag] : j;
+      edges[1][edge_counter] = nequip_mode ? tag2i[jtag] : j; // remap to local for NequIP
 
+      // compute cell shift for NequIP as matrix product of inverse cell matrix
+      // and edge vector
       inputtype *e_vec = &edge_cell_shifts[3*edge_counter];
       if constexpr (nequip_mode) {
         for (int d = 0; d < 3; d++)
@@ -542,6 +550,7 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
 
   if (debug_mode && nequip_mode) std::cout << "cell:\n" << cell_tensor << "\n";
 
+  // create dictionary that goes into the model
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
   input.insert("edge_index", edges_tensor.to(device));
