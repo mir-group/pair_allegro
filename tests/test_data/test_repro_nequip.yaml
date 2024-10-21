@@ -1,0 +1,41 @@
+run_name: minimal
+seed: 123
+dataset_seed: 456
+
+# from minimal_stress.yaml
+model_builders:
+  - SimpleIrrepsConfig
+  - EnergyModel
+  - PerSpeciesRescale
+  - StressForceOutput
+  - RescaleEnergyEtc
+
+# network
+num_basis: 4
+l_max: 1
+parity: true
+num_features: 1
+
+
+dataset: ase
+dataset_file_name: aspirin.xyz
+chemical_symbols:
+  - H
+  - O
+  - C
+
+# logging
+wandb: false
+# verbose: debug
+
+# training
+n_train: 5
+n_val: 5
+batch_size: 1
+max_epochs: 1
+
+# loss function
+loss_coeffs: forces
+
+# optimizer
+optimizer_name: Adam

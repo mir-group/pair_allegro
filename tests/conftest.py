@@ -90,7 +90,7 @@ def _check_and_print(retcode):
 def deployed_model(model_seed, dataset_options):
     dataset_options, n_rank = dataset_options
     with tempfile.TemporaryDirectory() as tmpdir:
-        config = Config.from_file(str(TESTS_DIR / "test_data/test_repro.yaml"))
+        config = Config.from_file(str(TESTS_DIR / "test_data/test_repro_allegro.yaml"))
         config.update(dataset_options)
         config["seed"] = model_seed
         config["root"] = tmpdir + "/root"

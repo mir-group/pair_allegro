@@ -63,8 +63,11 @@ template <int nequip_mode> PairAllegro<nequip_mode>::PairAllegro(LAMMPS *lmp) : 
               << " and output precision " << typeid(outputtype).name() << std::endl;
   ;
 
-  if (const char *env_p = std::getenv("ALLEGRO_DEBUG")) {
-    std::cout << "PairAllegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
+  if (const char *env_p = std::getenv("NEQUIP_DEBUG")) {
+    std::cout << "pair_style nequip is in DEBUG mode, since NEQUIP_DEBUG is in env\n";
+    debug_mode = 1;
+  } else if (const char *env_p = std::getenv("ALLEGRO_DEBUG")) {
+    std::cout << "pair_style allegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
     debug_mode = 1;
   }
 
@@ -356,7 +359,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::compute(int eflag, int
   }
   if (vflag_atom) { error->all(FLERR, "Pair style Allegro does not support per-atom virial"); }
 
-  if (debug_mode) {
+  if (debug_mode && 2<1) {
     std::cout << "ALLEGRO CUSTOM OUTPUT" << std::endl;
     for (const auto &elem : output) {
       std::cout << elem.key() << "\n" << elem.value() << std::endl;
@@ -436,17 +439,17 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
   }
 
   torch::Tensor pos_tensor =
-      torch::zeros({ntotal, 3}, torch::TensorOptions().dtype(inputtorchtype));
+      torch::zeros({nequip_mode ? inum : ntotal, 3}, torch::TensorOptions().dtype(inputtorchtype));
   torch::Tensor edges_tensor =
       torch::zeros({2, nedges}, torch::TensorOptions().dtype(torch::kInt64));
   torch::Tensor ij2type_tensor =
-      torch::zeros({ntotal}, torch::TensorOptions().dtype(torch::kInt64));
+      torch::zeros({nequip_mode ? inum : ntotal}, torch::TensorOptions().dtype(torch::kInt64));
 
   auto pos = pos_tensor.accessor<inputtype, 2>();
   auto edges = edges_tensor.accessor<long, 2>();
   auto ij2type = ij2type_tensor.accessor<long, 1>();
 
-  std::vector<int> tag2i(nequip_mode ? inum : 0);
+  std::vector<int> tag2i(nequip_mode ? inum+1 : 0);
   torch::Tensor cell_tensor, cell_inv_tensor;
   torch::Tensor edge_cell_shifts_tensor;
   inputtype* edge_cell_shifts, *cell_inv;
@@ -464,18 +467,22 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
   // store edges and _cell_shifts
   // ii follows the order of the neighbor lists,
   // i follows the order of x, f, etc.
-  if (debug_mode) printf("Allegro edges: i j rij\n");
-#pragma omp parallel for
+  if (debug_mode) {
+    if (nequip_mode) printf("NEQUIP edges: i j xi[:] xj[:] cell_shift[:] rij\n");
+    else printf("Allegro edges: i j rij\n");
+  }
+#pragma omp parallel for if(!debug_mode)
   for (int ii = 0; ii < ntotal; ii++) {
     int i = ilist[ii];
     int itag = tag[i];
     int itype = type[i];
 
-    ij2type[i] = type_mapper[itype - 1];
-
-    pos[i][0] = x[i][0];
-    pos[i][1] = x[i][1];
-    pos[i][2] = x[i][2];
+    if (!nequip_mode || ii<inum) {
+      pos[i][0] = x[i][0];
+      pos[i][1] = x[i][1];
+      pos[i][2] = x[i][2];
+      ij2type[i] = type_mapper[itype - 1];
+    }
 
     if (ii >= nlocal) { continue; }
 
@@ -502,6 +509,7 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
       edges[0][edge_counter] = i;
       edges[1][edge_counter] = nequip_mode ? tag2i[jtag] : j;
 
+      inputtype *e_vec = &edge_cell_shifts[3*edge_counter];
       if constexpr (nequip_mode) {
         for (int d = 0; d < 3; d++)
           periodic_shift[d] = x[j][d] - x[tag2i[jtag]][d];
@@ -512,16 +520,27 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairAllegro<neq
           for (int k = 0; k < 3; k++)
             tmp += cell_inv[3*d+k] * periodic_shift[k];
 
-          edge_cell_shifts[3*edge_counter+d] = std::round(tmp);
+          e_vec[d] = std::round(tmp);
         }
       }
 
-      edge_counter++;
+      if (debug_mode) {
+        if (nequip_mode)
+          printf("%d %d %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g\n", itag-1, jtag-1,
+              x[i][0],x[i][1],x[i][2],x[tag2i[jtag]][0],x[tag2i[jtag]][1],x[tag2i[jtag]][2],
+              e_vec[0],e_vec[1],e_vec[2],sqrt(rsq));
+        else printf("%d %d %.10g\n", itag - 1, jtag - 1, sqrt(rsq));
+      }
 
-      if (debug_mode) printf("%d %d %.10g\n", itag - 1, jtag - 1, sqrt(rsq));
+      edge_counter++;
     }
   }
-  if (debug_mode) printf("end Allegro edges\n");
+  if (debug_mode) {
+    if (nequip_mode) printf("end NEQUIP edges\n");
+    else printf("end Allegro edges\n");
+  }
+
+  if (debug_mode && nequip_mode) std::cout << "cell:\n" << cell_tensor << "\n";
 
   c10::Dict<std::string, torch::Tensor> input;
   input.insert("pos", pos_tensor.to(device));
@@ -560,7 +579,7 @@ template <int nequip_mode> void PairAllegro<nequip_mode>::get_tag2i(std::vector<
     int itag = tag[i];
 
     // Inverse mapping from tag to x/f atom index
-    tag2i[itag-1] = i; // tag is probably 1-based
+    tag2i[itag] = i;
   }
 }
 
