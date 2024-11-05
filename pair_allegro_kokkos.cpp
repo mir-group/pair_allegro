@@ -54,7 +54,7 @@ namespace Kokkos {
 
 /* ---------------------------------------------------------------------- */
 
-template<int nequip_mode>
+template<bool nequip_mode>
 PairAllegroKokkos<nequip_mode>::PairAllegroKokkos(LAMMPS *lmp) : PairNequIPAllegro<nequip_mode>(lmp)
 {
   this->respa_enable = 0;
@@ -70,7 +70,7 @@ PairAllegroKokkos<nequip_mode>::PairAllegroKokkos(LAMMPS *lmp) : PairNequIPAlleg
    check if allocated, since class can be destructed when incomplete
 ------------------------------------------------------------------------- */
 
-template<int nequip_mode>
+template<bool nequip_mode>
 PairAllegroKokkos<nequip_mode>::~PairAllegroKokkos()
 {
   if (!this->copymode) {
@@ -83,7 +83,7 @@ PairAllegroKokkos<nequip_mode>::~PairAllegroKokkos()
 
 /* ---------------------------------------------------------------------- */
 
-template<int nequip_mode>
+template<bool nequip_mode>
 void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
 {
   eflag = eflag_in;
@@ -287,15 +287,14 @@ void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
   input.insert("pos", pos_tensor);
   input.insert("edge_index", edges_tensor);
   input.insert("atom_types", ij2type_tensor);
-  std::vector<torch::IValue> input_vector(1, input);
   //std::cout << "NequIP model input:\n";
   //std::cout << "pos:\n" << pos_tensor.cpu() << "\n";
   //std::cout << "edge_index:\n" << edges_tensor.cpu() << "\n";
   //std::cout << "atom_types:\n" << ij2type_tensor.cpu() << "\n";
 
-  auto output = this->model.forward(input_vector).toGenericDict();
-  torch::Tensor forces_tensor = output.at("forces").toTensor();
-  torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor();
+  auto output = this->call(input);
+  torch::Tensor forces_tensor = output.at("forces");
+  torch::Tensor atomic_energy_tensor = output.at("atomic_energy");
 
   UnmanagedFloatView1D d_atomic_energy(atomic_energy_tensor.data_ptr<outputtype>(), inum);
   UnmanagedFloatView2D d_forces(forces_tensor.data_ptr<outputtype>(), ignum, 3);
@@ -330,7 +329,7 @@ void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
   }
 
   if(vflag){
-    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    torch::Tensor v_tensor = output.at("virial").cpu();
     auto v = v_tensor.accessor<outputtype, 3>();
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
@@ -348,7 +347,7 @@ void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
   if (this->vflag_fdotr) pair_virial_fdotr_compute(this);
 
   for(const std::string &output_name : this->custom_output_names){
-    this->custom_output.insert_or_assign(output_name, output.at(output_name).toTensor().detach());
+    this->custom_output.insert_or_assign(output_name, output.at(output_name).detach());
   }
 
 
@@ -365,7 +364,7 @@ void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-template<int nequip_mode>
+template<bool nequip_mode>
 void PairAllegroKokkos<nequip_mode>::coeff(int narg, char **arg)
 {
   super::coeff(narg,arg);
@@ -393,7 +392,7 @@ void PairAllegroKokkos<nequip_mode>::coeff(int narg, char **arg)
    init specific to this pair style
 ------------------------------------------------------------------------- */
 
-template<int nequip_mode>
+template<bool nequip_mode>
 void PairAllegroKokkos<nequip_mode>::init_style()
 {
   super::init_style();
@@ -412,6 +411,6 @@ void PairAllegroKokkos<nequip_mode>::init_style()
 
 
 namespace LAMMPS_NS {
-template class PairAllegroKokkos<0>;
+template class PairAllegroKokkos<false>;
 }
 

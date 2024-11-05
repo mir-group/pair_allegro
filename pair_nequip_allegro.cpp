@@ -33,9 +33,11 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <numeric>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <torch/csrc/jit/runtime/graph_executor.h>
@@ -50,26 +52,43 @@
 #error "PyTorch version < 1.11 is not supported"
 #endif
 
+#ifdef NEQUIP_AOT_COMPILE
+// torch 2.6 required for AOT Inductor
+#if (TORCH_VERSION_MAJOR < 2 && TORCH_VERSION_MINOR <= 6)
+#error "NEQUIP_AOT_COMPILE requires PyTorch >= 2.6"
+#endif
+#include <torch/csrc/inductor/aoti_package/model_package_loader.h>
+#include <torch/csrc/inductor/aoti_runner/model_container_runner.h>
+#endif
+
 using namespace LAMMPS_NS;
 
-template <int nequip_mode> PairNequIPAllegro<nequip_mode>::PairNequIPAllegro(LAMMPS *lmp) : Pair(lmp)
+template <bool nequip_mode> PairNequIPAllegro<nequip_mode>::PairNequIPAllegro(LAMMPS *lmp) : Pair(lmp)
 {
   restartinfo = 0;
   manybody_flag = 1;
 
   if (comm->me == 0)
-    std::cout << "Allegro is using input precision " << typeid(inputtype).name()
+    std::cout << "NequIP/Allegro is using input precision " << typeid(inputtype).name()
               << " and output precision " << typeid(outputtype).name() << std::endl;
   ;
 
-  if (const char *env_p = std::getenv("NEQUIP_DEBUG")) {
-    std::cout << "pair_style nequip is in DEBUG mode, since NEQUIP_DEBUG is in env\n";
-    debug_mode = 1;
-  } else if (const char *env_p = std::getenv("ALLEGRO_DEBUG")) {
-    std::cout << "pair_style allegro is in DEBUG mode, since ALLEGRO_DEBUG is in env\n";
-    debug_mode = 1;
+  // === set variables based on environment variables ===
+  // debug mode
+  if (const char *env_p = std::getenv("_NEQUIP_LOG_LEVEL")) {
+    if (std::string(env_p) == "DEBUG") {
+        std::cout << "Debug mode enabled, since _NEQUIP_LOG_LEVEL is set to DEBUG\n";
+        debug_mode = 1;
+    }
   }
 
+  // error out if more than one rank but in NequIP mode
+  if (nequip_mode && comm->nprocs > 1) {
+    error->all(FLERR,
+               "pair_nequip only works with a single MPI rank but more than one detected");
+  }
+  
+  // === set device ===
   if (torch::cuda::is_available()) {
     int deviceidx = -1;
     if (comm->nprocs > 1) {
@@ -102,10 +121,10 @@ template <int nequip_mode> PairNequIPAllegro<nequip_mode>::PairNequIPAllegro(LAM
   } else {
     device = torch::kCPU;
   }
-  if (debug_mode) std::cout << "Allegro is using device " << device << "\n";
+  if (debug_mode) std::cout << "NequIP/Allegro is using device " << device << "\n";
 }
 
-template <int nequip_mode> PairNequIPAllegro<nequip_mode>::~PairNequIPAllegro()
+template <bool nequip_mode> PairNequIPAllegro<nequip_mode>::~PairNequIPAllegro()
 {
   if (copymode) return;
   if (allocated) {
@@ -115,7 +134,7 @@ template <int nequip_mode> PairNequIPAllegro<nequip_mode>::~PairNequIPAllegro()
   }
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::init_style()
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::init_style()
 {
   if (atom->tag_enable == 0) error->all(FLERR, "Pair style Allegro requires atom IDs");
 
@@ -131,12 +150,12 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::init_style()
   if (nequip_mode && force->newton_pair) error->all(FLERR, "Pair style nequip requires newton pair off");
 }
 
-template <int nequip_mode> double PairNequIPAllegro<nequip_mode>::init_one(int i, int j)
+template <bool nequip_mode> double PairNequIPAllegro<nequip_mode>::init_one(int i, int j)
 {
   return cutoff;
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::allocate()
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::allocate()
 {
   allocated = 1;
   int n = atom->ntypes;
@@ -146,94 +165,115 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::allocate()
   memory->create(cutoff_matrix, n, n, "pair:cutoff_matrix");
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::settings(int narg, char ** /*arg*/)
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::settings(int narg, char ** /*arg*/)
 {
   // "allegro" should be the only word after "pair_style" in the input file.
   if (narg > 0) error->all(FLERR, "Illegal pair_style command, too many arguments");
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, char **arg)
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, char **arg)
 {
   if (!allocated) allocate();
 
   int ntypes = atom->ntypes;
 
-  // Should be exactly 3 arguments following "pair_coeff" in the input file.
-  if (narg != (3 + ntypes))
+  for (int i = 1; i <= ntypes; i++)
+    for (int j = i; j <= ntypes; j++) setflag[i][j] = 0;
+
+  // === parse arg ===
+  // should be exactly 3 arguments following "pair_coeff" in the input file.
+  if (narg != (3 + ntypes)) {
     error->all(FLERR,
-               "Incorrect args for pair coefficients, should be * * <model>.pth <type1> <type2> "
-               "... <typen>");
+	        "Incorrect args for pair coefficients, should be * * <model>.nequip.pth/pt2 <type1> <type2> ... <typen>");
+  }
 
   // Ensure I,J args are "* *".
   if (strcmp(arg[0], "*") != 0 || strcmp(arg[1], "*") != 0)
     error->all(FLERR, "Incorrect args for pair coefficients");
 
-  for (int i = 1; i <= ntypes; i++)
-    for (int j = i; j <= ntypes; j++) setflag[i][j] = 0;
-
-  std::vector<std::string> elements(ntypes);
-  for (int i = 0; i < ntypes; i++) { elements[i] = arg[i + 1]; }
-
-  if (comm->me == 0) std::cout << "Allegro: Loading model from " << arg[2] << "\n";
-
-  std::unordered_map<std::string, std::string> metadata = {{"config", ""},
-                                                           {"nequip_version", ""},
-                                                           {"r_max", ""},
-                                                           {"n_species", ""},
-                                                           {"type_names", ""},
-                                                           {"_jit_bailout_depth", ""},
-                                                           {"_jit_fusion_strategy", ""},
-                                                           {"allow_tf32", ""},
-                                                           {"per_edge_type_cutoff", ""}};
-  model = torch::jit::load(std::string(arg[2]), device, metadata);
-  model.eval();
-
-  // Check if model is a NequIP model
-  if (metadata["nequip_version"].empty()) {
-    error->all(FLERR,
-               "The indicated TorchScript file does not appear to be a deployed NequIP model; did "
-               "you forget to run `nequip-deploy`?");
+  // set model path
+  model_path = std::string(arg[2]);
+  // condition `use_aot` on extension `.nequip.pth` vs `.nequip.pt2`
+  std::string ts_ext = ".nequip.pth";
+  std::string aot_ext = ".nequip.pt2";
+  if (model_path.size() >= ts_ext.size() && model_path.compare(model_path.size() - ts_ext.size(), ts_ext.size(), ts_ext) == 0) {
+    use_aot = false;
+  } else if (model_path.size() >= aot_ext.size() && model_path.compare(model_path.size() - aot_ext.size(), aot_ext.size(), aot_ext) == 0) {
+	use_aot = true;
+  }
+  else {
+    throw std::runtime_error("Only accepts model paths with extension `.nequip.pth` or `.nequip.pt2`, but found" + model_path);
   }
 
-  // If the model is not already frozen, we should freeze it:
-  // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
-  if (model.hasattr("training")) {
-    if (comm->me == 0) std::cout << "Allegro: Freezing TorchScript model...\n";
-    model = torch::jit::freeze(model);
-  }
+  // set up metadata dict
+  std::unordered_map<std::string, std::string> metadata;
 
-  // In PyTorch >=1.11, this is now set_fusion_strategy
-  // TODO: respect model
-  torch::jit::FusionStrategy strategy;
-  strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
-  torch::jit::setFusionStrategy(strategy);
-
-  // Set whether to allow TF32:
-  bool allow_tf32;
-  if (metadata["allow_tf32"].empty()) {
-    // Better safe than sorry
-    allow_tf32 = false;
+  // load model and metadata depending on torchscript vs aot
+  if (comm->me == 0) std::cout << "NequIP/Allegro: Loading model from " << model_path << "\n";
+  if (!use_aot) {
+    metadata = {
+	  {"r_max", ""},
+	  {"per_edge_type_cutoff", ""},
+	  {"type_names", ""},
+	  {"num_types", ""},
+	  {"allow_tf32", ""}
+    };
+    // === TorchScript ===
+    torchscript_model = torch::jit::load(model_path, device, metadata);
+    // TODO:  Python will do this, but we probably should still do it here?
+	torchscript_model.eval();
+    // TODO : think about whether to move freezing into Python in nequip-compile
+    // If the model is not already frozen, we should freeze it:
+    // This is the check used by PyTorch: https://github.com/pytorch/pytorch/blob/master/torch/csrc/jit/api/module.cpp#L476
+    if (torchscript_model.hasattr("training")) {
+      // TODO (general):  use LAMMPS logging tools more consistently?
+      if (comm->me == 0) std::cout << "NequIP/Allegro: Freezing TorchScript model...\n";
+      torchscript_model = torch::jit::freeze(torchscript_model);
+    }
   } else {
-    // It gets saved as an int 0/1
-    allow_tf32 = std::stoi(metadata["allow_tf32"]);
-  }
-  // See https://pytorch.org/docs/stable/notes/cuda.html
-  at::globalContext().setAllowTF32CuBLAS(allow_tf32);
-  at::globalContext().setAllowTF32CuDNN(allow_tf32);
+#ifndef NEQUIP_AOT_COMPILE
+    throw std::runtime_error("AOT Inductor compiled model (`.nequip.pt2` extension) found but pair style not compiled with `NEQUIP_AOT_COMPILE`");
+#else
+    // === AOT ===
+    aot_model = std::make_unique<torch::inductor::AOTIModelPackageLoader>(model_path);
+    metadata = aot_model->get_metadata();
 
+    // set up input and output order
+    model_input_order = {"pos", "edge_index", "atom_types"};
+    if (nequip_mode) {
+      std::vector<std::string> additional_items = {"cell", "edge_cell_shift"};
+      model_input_order.insert(model_input_order.end(), additional_items.begin(), additional_items.end());
+    }
+    model_output_order = {"atomic_energy", "forces", "virial"};
+#endif
+  }
+
+  // === process metadata information ===
   if (debug_mode) {
     std::cout << "NequIP/Allegro: Information from model: " << metadata.size() << " key-value pairs\n";
     for (const auto &n : metadata) {
-      if (n.first == "type_names")
-        std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
+      std::cout << "Key:[" << n.first << "] Value:[" << n.second << "]\n";
     }
   }
+
+  if (!use_aot) {
+    // TorchScript -- hardcode DYNAMIC, 10 (same is true on Python side)
+    torch::jit::FusionStrategy strategy = {{torch::jit::FusionBehavior::DYNAMIC, 10}};
+    torch::jit::setFusionStrategy(strategy);
+  }
+
+  // TODO: should TF32 be set before loading the model? does it matter?
+  // set whether to allow TF32 -- it gets saved as "0" or "1"
+  bool allow_tf32 = std::stoi(metadata["allow_tf32"]);
+  // see https://pytorch.org/docs/stable/notes/cuda.html
+  at::globalContext().setAllowTF32CuBLAS(allow_tf32);
+  at::globalContext().setAllowTF32CuDNN(allow_tf32);
 
   cutoff = std::stod(metadata["r_max"]);
 
   type_mapper.resize(ntypes, -1);
   std::stringstream ss;
-  int n_species = std::stod(metadata["n_species"]);
+  int num_model_types = std::stod(metadata["num_types"]);
   ss << metadata["type_names"];
   if (comm->me == 0)
     std::cout << "Type mapping:"
@@ -241,7 +281,7 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, 
   if (comm->me == 0)
     std::cout << "NequIP/Allegro type | NequIP/Allegro name | LAMMPS type | LAMMPS name"
               << "\n";
-  for (int i = 0; i < n_species; i++) {
+  for (int i = 0; i < num_model_types; i++) {
     std::string ele;
     ss >> ele;
     for (int itype = 1; itype <= ntypes; itype++) {
@@ -263,12 +303,12 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, 
   if (!metadata["per_edge_type_cutoff"].empty()) {
     std::stringstream matrix_string;
     matrix_string << metadata["per_edge_type_cutoff"];
-    std::vector<int> reverse_type_mapper(n_species, -1);
+    std::vector<int> reverse_type_mapper(num_model_types, -1);
 
     for (int i = 0; i < ntypes; i++) { reverse_type_mapper[type_mapper[i]] = i; }
 
-    for (int i = 0; i < n_species; i++) {
-      for (int j = 0; j < n_species; j++) {
+    for (int i = 0; i < num_model_types; i++) {
+      for (int j = 0; j < num_model_types; j++) {
         double cutij;
         matrix_string >> cutij;
         if (reverse_type_mapper[i] >= 0 && reverse_type_mapper[j] >= 0) {
@@ -286,10 +326,11 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::coeff(int narg, 
       for (int j = 0; j < ntypes; j++) { cutoff_matrix[i][j] = cutoff; }
     }
   }
+
 }
 
 // Force and energy computation
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int eflag, int vflag)
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int eflag, int vflag)
 {
   ev_init(eflag, vflag);
 
@@ -310,16 +351,14 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int efla
 
   // create input to model (positions etc)
   auto input = preprocess();
-  std::vector<torch::IValue> input_vector(1, input);
-
   // evaluate model
-  auto output = model.forward(input_vector).toGenericDict();
+  auto output = call(input);
 
   // extract forces and energies as CPU tensors
-  torch::Tensor forces_tensor = output.at("forces").toTensor().cpu();
+  torch::Tensor forces_tensor = output.at("forces").cpu();
   auto forces = forces_tensor.accessor<outputtype, 2>();
 
-  torch::Tensor atomic_energy_tensor = output.at("atomic_energy").toTensor().cpu();
+  torch::Tensor atomic_energy_tensor = output.at("atomic_energy").cpu();
   auto atomic_energies = atomic_energy_tensor.accessor<outputtype, 2>();
   outputtype atomic_energy_sum = atomic_energy_tensor.sum().data_ptr<outputtype>()[0];
 
@@ -341,7 +380,7 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int efla
   }
 
   if (vflag) {
-    torch::Tensor v_tensor = output.at("virial").toTensor().cpu();
+    torch::Tensor v_tensor = output.at("virial").cpu();
     auto v = v_tensor.accessor<outputtype, 3>();
     // Convert from 3x3 symmetric tensor format, which NequIP outputs, to the flattened form LAMMPS expects
     // First [0] index on v is batch
@@ -363,11 +402,59 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::compute(int efla
 
   for (const std::string &output_name : custom_output_names) {
     if (!output.contains(output_name)) error->all(FLERR, "missing {}", output_name);
-    custom_output.insert_or_assign(output_name, output.at(output_name).toTensor().detach());
+    custom_output.insert_or_assign(output_name, output.at(output_name).detach());
   }
 }
 
-template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAllegro<nequip_mode>::preprocess() {
+template <bool nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAllegro<nequip_mode>::call(c10::Dict<std::string, torch::Tensor> input) {
+  // This function takes an "AtomicDataDict", calls the model, and returns an "AtomicDataDict"
+  // Note that this function does NOT deal with devices, it assumes `input` is already on the right device and returns whatever device the model returns.
+  // Moving to device is the responsibility of the calling code, since what device the original tensors are on varies between Kokkos and non-Kokkos anyway.
+
+  // call the model depending on compilation mode
+  c10::Dict<std::string, torch::Tensor> output;
+
+  if (!use_aot) {
+    // === TorchScript ===
+    std::vector<torch::IValue> input_vector(1, input);
+
+    // can't just do
+    // ```output = model.forward(input_vector).toGenericDict();```
+    // because of type mismatch, i.e.
+    // ```: c10::Dict<std::string, at::Tensor> = c10::Dict<c10::IValue, c10::IValue>```
+    auto generic_output = torchscript_model.forward(input_vector).toGenericDict();
+    for (const auto& item : generic_output) {
+      std::string key = item.key().toStringRef();
+      torch::Tensor value = item.value().toTensor();
+      output.insert(key, value);
+    }
+  } else {
+#ifndef NEQUIP_AOT_COMPILE	  
+	// should have errored out at load time in `coeff` but have error code here just in case
+    throw std::runtime_error("AOT Inductor compiled model (`.nequip.pt2` extension) found but pair style not compiled with `NEQUIP_AOT_COMPILE`");
+#else
+    // === AOT ===
+    // `input` dict -> `input_vector` according to `model_input_order`
+    std::vector<torch::Tensor> input_vector;
+    for (const std::string &input_field : model_input_order) {
+      input_vector.push_back(input.at(input_field));
+    }
+    // run the model
+    // TODO: do we need to run with cuda stream and get the cuda stream from Kokkos??
+	// see https://github.com/pytorch/pytorch/blob/39ede99a33b0631330a3966e567d3c07d93aca17/torch/csrc/inductor/aoti_runner/model_container_runner.h#L27
+	std::vector<torch::Tensor> output_vector = aot_model->run(input_vector);
+    // `output_vector` -> `output` dict according to `model_output_order`
+    std::vector<torch::Tensor>::iterator tensor_it = output_vector.begin();
+    for (const std::string& key : model_output_order) {
+      output.insert(key, *tensor_it++);
+    }
+#endif
+  }
+  return output;
+}
+
+
+template <bool nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAllegro<nequip_mode>::preprocess() {
   // Atom positions, including ghost atoms
   double **x = atom->x;
   // Atom IDs, unique, reproducible, the "real" indices
@@ -530,7 +617,6 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAlleg
           e_vec[d] = std::round(tmp);
         }
       }
-
       if (debug_mode) {
         if (nequip_mode)
           printf("%d %d %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g %.10g\n", itag-1, jtag-1,
@@ -538,7 +624,6 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAlleg
               e_vec[0],e_vec[1],e_vec[2],sqrt(rsq));
         else printf("%d %d %.10g\n", itag - 1, jtag - 1, sqrt(rsq));
       }
-
       edge_counter++;
     }
   }
@@ -556,13 +641,15 @@ template <int nequip_mode> c10::Dict<std::string, torch::Tensor> PairNequIPAlleg
   input.insert("atom_types", ij2type_tensor.to(device));
   if (nequip_mode) {
     input.insert("edge_cell_shift", edge_cell_shifts_tensor.to(device));
+	// reshape cell to (1, 3, 3), i.e. with batch dims for consistency with nequip conventions
+    cell_tensor = cell_tensor.unsqueeze(0);
     input.insert("cell", cell_tensor.to(device));
   }
 
   return input;
 }
 
-template <int nequip_mode> torch::Tensor PairNequIPAllegro<nequip_mode>::get_cell(){
+template <bool nequip_mode> torch::Tensor PairNequIPAllegro<nequip_mode>::get_cell(){
   torch::Tensor cell_tensor = torch::zeros({3,3}, torch::TensorOptions().dtype(inputtorchtype));
   auto cell = cell_tensor.accessor<inputtype,2>();
 
@@ -578,7 +665,7 @@ template <int nequip_mode> torch::Tensor PairNequIPAllegro<nequip_mode>::get_cel
   return cell_tensor;
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::get_tag2i(std::vector<int> &tag2i){
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::get_tag2i(std::vector<int> &tag2i){
   int inum = list->inum;
   int *ilist = list->ilist;
   tagint *tag = atom->tag;
@@ -591,12 +678,12 @@ template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::get_tag2i(std::v
   }
 }
 
-template <int nequip_mode> void PairNequIPAllegro<nequip_mode>::add_custom_output(std::string name)
+template <bool nequip_mode> void PairNequIPAllegro<nequip_mode>::add_custom_output(std::string name)
 {
   custom_output_names.push_back(name);
 }
 
 namespace LAMMPS_NS {
-template class PairNequIPAllegro<0>;
-template class PairNequIPAllegro<1>;
+template class PairNequIPAllegro<false>;
+template class PairNequIPAllegro<true>;
 }    // namespace LAMMPS_NS

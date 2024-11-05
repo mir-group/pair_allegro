@@ -13,7 +13,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(allegro/kk,PairAllegroKokkos<0>)
+PairStyle(allegro/kk,PairAllegroKokkos<false>)
 
 #else
 
@@ -26,7 +26,7 @@ PairStyle(allegro/kk,PairAllegroKokkos<0>)
 
 namespace LAMMPS_NS {
 
-template<int nequip_mode>
+template<bool nequip_mode>
 class PairAllegroKokkos : public PairNequIPAllegro<nequip_mode> {
  public:
   typedef PairNequIPAllegro<nequip_mode> super;

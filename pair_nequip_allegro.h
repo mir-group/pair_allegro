@@ -14,8 +14,8 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(nequip,PairNequIPAllegro<1>)
-PairStyle(allegro,PairNequIPAllegro<0>)
+PairStyle(nequip,PairNequIPAllegro<true>)
+PairStyle(allegro,PairNequIPAllegro<false>)
 
 #else
 
@@ -25,6 +25,10 @@ PairStyle(allegro,PairNequIPAllegro<0>)
 #include "pair.h"
 
 #include <torch/torch.h>
+#ifdef NEQUIP_AOT_COMPILE
+#include <torch/csrc/inductor/aoti_package/model_package_loader.h>
+#endif
+
 #include <vector>
 #include <type_traits>
 #include <map>
@@ -33,7 +37,7 @@ PairStyle(allegro,PairNequIPAllegro<0>)
 
 namespace LAMMPS_NS {
 
-template<int nequip_mode>
+template<bool nequip_mode>
 class PairNequIPAllegro : public Pair {
  public:
   PairNequIPAllegro(class LAMMPS *);
@@ -46,13 +50,28 @@ class PairNequIPAllegro : public Pair {
   void allocate();
 
   double cutoff;
-  torch::jit::Module model;
   torch::Device device = torch::kCPU;
   std::vector<int> type_mapper;
 
-  int batch_size = -1;
+  std::string model_path;
 
-  typedef float inputtype;
+  // `use_aot` bool present even if NEQUIP_AOT_COMPILE not used at compile-time
+  // cleaner logic where we always have an outer condition `use_aot` and an inner `ifndef` condition on whether NEQUIP_AOT_COMPILE was used at compile-time
+  // errors out if `use_aot` is true, but NEQUIP_AOT_COMPILE wasn't used at compile-time
+  bool use_aot;
+
+  // keep separate `torchscript_model` and `aot_model` declarations since which is used is only determined at runtime
+  torch::jit::Module torchscript_model;
+
+#ifdef NEQUIP_AOT_COMPILE
+  // both torchscript or AOT model can be used
+  std::unique_ptr<torch::inductor::AOTIModelPackageLoader> aot_model;
+  std::vector<std::string> model_input_order;
+  std::vector<std::string> model_output_order;
+#endif
+
+  // In nequip >= 0.7.0, input and output are always F64
+  typedef double inputtype;
   typedef double outputtype;
 
   torch::ScalarType inputtorchtype = torch::CppTypeToScalarType<inputtype>();
@@ -68,6 +87,7 @@ class PairNequIPAllegro : public Pair {
   double** cutoff_matrix;
 
   c10::Dict<std::string, torch::Tensor> preprocess();
+  c10::Dict<std::string, torch::Tensor> call(c10::Dict<std::string, torch::Tensor>);
 
   torch::Tensor get_cell();
   void get_tag2i(std::vector<int>&);
