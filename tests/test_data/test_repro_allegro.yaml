@@ -1,62 +1,109 @@
-run_name: minimal
-seed: 123
-dataset_seed: 456
+run: [train]
 
-default_dtype: float64
-model_dtype: float32
-allow_tf32: false
-
-model_builders:
- - allegro.model.Allegro
- - PerSpeciesRescale
- - StressForceOutput
- - RescaleEnergyEtc
-
-avg_num_neighbors: auto
-l_max: 2
-parity: o3_full
-
-# Allegro layers:
-num_layers: 2
-env_embed_multiplicity: 8
-
-two_body_latent_mlp_latent_dimensions: [64, 64]
-two_body_latent_mlp_nonlinearity: silu
-two_body_latent_mlp_initialization: normal  # normal is closer to a trained weight distribution for numerics
-
-latent_mlp_latent_dimensions: [64, 64]
-latent_mlp_nonlinearity: silu
-latent_mlp_initialization: normal
-
-env_embed_mlp_latent_dimensions: []
-env_embed_mlp_nonlinearity: null
-env_embed_mlp_initialization: normal
-# - end allegro layers -
-
-# Final MLP to go from Allegro latent space to edge energies:
-edge_eng_mlp_latent_dimensions: [64]
-edge_eng_mlp_nonlinearity: null
-edge_eng_mlp_initialization: normal
-
-dataset: ase
 dataset_file_name: aspirin.xyz
-chemical_symbols:
-  - H
-  - O
-  - C
+cutoff_radius: 5.0
+chemical_symbols: [C, O, H]
+model_type_names: ${chemical_symbols}
+seed: 1
+model_dtype: float32
 
-# logging
-wandb: false
-# verbose: debug
+data:
+  _target_: nequip.data.datamodule.ASEDataModule
+  seed: ${seed}
+  split_dataset:
+    file_path: ${dataset_file_name}
+    train: 5
+    val: 5
+    test: 5
+  transforms:
+    - _target_: nequip.data.transforms.NeighborListTransform
+      r_max: ${cutoff_radius}
+    - _target_: nequip.data.transforms.ChemicalSpeciesToAtomTypeMapper
+      chemical_symbols: ${chemical_symbols}
+  train_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 1
+  val_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 1
+  test_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 1
+  stats_manager:
+    _target_: nequip.data.DataStatisticsManager
+    dataloader_kwargs:
+      batch_size: 5
+    metrics:
+      - field:
+          _target_: nequip.data.NumNeighbors
+        metric: 
+          _target_: nequip.data.Mean
+        name: num_neighbors_mean
+      - field:
+          _target_: nequip.data.PerAtomModifier
+          field: total_energy
+        metric:
+          _target_: nequip.data.Mean
+        name: per_atom_energy_mean
+      - field: forces
+        metric:
+          _target_: nequip.data.RootMeanSquare
+        name: forces_rms
 
-# training
-n_train: 5
-n_val: 5
-batch_size: 1
-max_epochs: 1
+trainer:
+  _target_: lightning.Trainer
+  max_epochs: 20
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 1
+  callbacks:
+    - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+      dirpath: ${hydra:runtime.output_dir}
+      save_last: true
 
-# loss function
-loss_coeffs: forces
+training_module:
+  _target_: nequip.train.EMALightningModule
+  loss:
+    _target_: nequip.train.EnergyForceLoss
+    per_atom_energy: true
+    coeffs:
+      total_energy: 1.0
+      forces: 1.0
+  val_metrics: 
+    _target_: nequip.train.EnergyForceMetrics
+    coeffs:
+      total_energy_mae: 1.0
+      forces_mae: 1.0
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 4e-3
+  model:
+    _target_: allegro.model.AllegroModel
+    # basic model params
+    seed: ${seed}
+    model_dtype: ${model_dtype}
+    type_names: ${model_type_names}
+    r_max: ${cutoff_radius}
+    # general model params
+    scalar_embed:
+      _target_: allegro.nn.TwoBodyBesselScalarEmbed
+      num_bessels: 8
+      bessel_trainable: false
+      polynomial_cutoff_p: 6
+      two_body_embedding_dim: 32
+      two_body_mlp_hidden_layers_depth: 0
+    l_max: 2
+    parity_setting: o3_full
+    num_layers: 3
+    num_scalar_features: 64
+    num_tensor_features: 32
+    allegro_mlp_hidden_layers_depth: 2
+    allegro_mlp_hidden_layers_width: 64
+    readout_mlp_hidden_layers_depth: 1
+    readout_mlp_hidden_layers_width: 32
+    # data-dependent model params
+    avg_num_neighbors: ${training_data_stats:num_neighbors_mean}
+    per_type_energy_shifts: ${training_data_stats:per_atom_energy_mean}
+    per_type_energy_scales: ${training_data_stats:forces_rms}
 
-# optimizer
-optimizer_name: Adam
+global_options:
+  allow_tf32: false

@@ -15,8 +15,9 @@ import ase.io
 
 import torch
 
-from nequip.ase import NequIPCalculator
-from nequip.data import AtomicData, AtomicDataDict
+from nequip.data import AtomicDataDict, from_ase, compute_neighborlist_
+from nequip.nn import with_edge_vectors_
+
 
 from conftest import (
     _check_and_print,
@@ -25,6 +26,7 @@ from conftest import (
     HAS_KOKKOS,
     HAS_KOKKOS_CUDA,
     HAS_OPENMP,
+    COMPILE_MODES,
 )
 
 
@@ -34,17 +36,47 @@ from conftest import (
     + ([(False, True)] if HAS_OPENMP else [])
     + ([(True, False)] if HAS_KOKKOS else []),
 )
-def test_repro(deployed_model, kokkos: bool, openmp: bool):
+@pytest.mark.parametrize(
+    "compile_mode",
+    # i.e. torchscript or aotinductor
+    list(COMPILE_MODES.keys()),
+)
+@pytest.mark.parametrize(
+    "n_rank",
+    [1, 2, 4],
+)
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_repro(
+    deployed_allegro_model,
+    kokkos: bool,
+    openmp: bool,
+    compile_mode: str,
+    n_rank: int,
+    device: str,
+):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not detected, skipping `devive=cuda` tests")
     structure: ase.Atoms
-    deployed_model: str
-    deployed_model, structures, config, n_rank = deployed_model
-    num_types = len(config["chemical_symbols"])
+    model_tmpdir, calc, structures, config, tol = deployed_allegro_model
+    model_file_path = model_tmpdir + f"/{device}_" + COMPILE_MODES[compile_mode]
 
-    calc = NequIPCalculator.from_deployed_model(
-        deployed_model,
-        set_global_options=True,
-        species_to_type_name={s: s for s in config["chemical_symbols"]},
-    )
+    # TODO: how to run CPU tests with GPU enabled Kokkos?
+    if kokkos:
+        if HAS_KOKKOS_CUDA and device == "cpu":
+            pytest.skip(
+                "Kokkos compiled with GPU-enabled backend, skipping CPU + Kokkos tests"
+            )
+
+    # decide which tests to use `n_rank` > 1
+    if n_rank > 1:
+        data_name = config["dataset_file_name"]
+        r_max = float(config["cutoff_radius"])
+        if not (data_name in ["CuPd-cubic-big.xyz", "Cu-cubic.xyz"] and r_max < 8.0):
+            pytest.skip(
+                f"skipping `n_rank={n_rank}` Allegro test for {data_name} and `r_max={r_max}`"
+            )
+
+    num_types = len(config["chemical_symbols"])
 
     newline = "\n"
     periodic = all(structures[0].pbc)
@@ -64,7 +96,7 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
         pair_style	allegro
         # note that ASE outputs lammps types in alphabetical order of chemical symbols
         # since we use chem symbols in this test, just put the same
-        pair_coeff	* * {deployed_model} {' '.join(sorted(set(config["chemical_symbols"])))}
+        pair_coeff	* * {model_file_path} {' '.join(sorted(set(config["chemical_symbols"])))}
 {newline.join('        mass  %i 1.0' % i for i in range(1, num_types + 1))}
 
         neighbor	1.0 bin
@@ -96,11 +128,14 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
             f.write(lmp_in)
         # environment variables
         env = dict(os.environ)
-        env["ALLEGRO_DEBUG"] = "true"
+        env["_NEQUIP_LOG_LEVEL"] = "DEBUG"
+        if device == "cpu":
+            env["CUDA_VISIBLE_DEVICES"] = ""
+
         # save out the structure
         for i, structure in enumerate(structures):
             ase.io.write(
-                tmpdir + f"/structure.data",
+                tmpdir + "/structure.data",
                 structure,
                 format="lammps-data",
             )
@@ -154,11 +189,13 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 stderr=subprocess.PIPE,
                 shell=True,
             )
+
+            # uncomment to view LAMMPS output
             _check_and_print(retcode)
 
             # Check the inputs:
             if n_rank == 1:
-                # TODO: this will only make sense with one rank
+                # this will only make sense with one rank
                 # load debug data:
                 mi = None
                 lammps_stdout = iter(retcode.stdout.decode("utf-8").splitlines())
@@ -180,12 +217,11 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 }
 
                 # first, check the model INPUTS
-                structure_data = AtomicData.to_AtomicDataDict(
-                    AtomicData.from_ase(structure, r_max=float(config["r_max"]))
+                structure_data = from_ase(structure)
+                structure_data = compute_neighborlist_(
+                    structure_data, r_max=float(config.cutoff_radius)
                 )
-                structure_data = AtomicDataDict.with_edge_vectors(
-                    structure_data, with_lengths=True
-                )
+                structure_data = with_edge_vectors_(structure_data, with_lengths=True)
                 lammps_edge_tuples = [
                     tuple(e)
                     for e in np.hstack(
@@ -251,46 +287,48 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
 
             # load dumped data
             lammps_result = ase.io.read(
-                tmpdir + f"/output.dump", format="lammps-dump-text"
+                tmpdir + "/output.dump", format="lammps-dump-text"
             )
 
             # --- now check the OUTPUTS ---
             structure.calc = calc
 
             # check output atomic quantities
-            print(
-                f"Max force error: {np.abs(structure.get_forces() - lammps_result.get_forces()).max()}"
+            max_force_err = np.max(
+                np.abs(structure.get_forces() - lammps_result.get_forces())
             )
+            max_force_comp = np.max(np.abs(structure.get_forces()))
+            force_rms = np.sqrt(np.mean(np.square(structure.get_forces())))
             assert np.allclose(
                 structure.get_forces(),
                 lammps_result.get_forces(),
-                atol=1e-4,
-            )
-            print(
-                f"Max atomic energy error: {np.abs(structure.get_potential_energies() - lammps_result.arrays['c_atomicenergies'].reshape(-1)).max()}"
-            )
+                atol=tol,
+                rtol=tol,
+            ), f"Force max abs err: {max_force_err:.8g} (atol/rtol={tol:.3g}). Max force component: {max_force_comp}, Force RMS: {force_rms}"
             assert np.allclose(
                 structure.get_potential_energies(),
                 lammps_result.arrays["c_atomicenergies"].reshape(-1),
-                atol=5e-5,
-            )
+                atol=tol,
+                rtol=tol,
+            ), f"Max atomic energy error: {np.abs(structure.get_potential_energies() - lammps_result.arrays['c_atomicenergies'].reshape(-1)).max()}"
 
             # check system quantities
-            lammps_pe = float(Path(tmpdir + f"/pe.dat").read_text()) / PRECISION_CONST
+            lammps_pe = float(Path(tmpdir + "/pe.dat").read_text()) / PRECISION_CONST
             lammps_totalatomicenergy = (
-                float(Path(tmpdir + f"/totalatomicenergy.dat").read_text())
+                float(Path(tmpdir + "/totalatomicenergy.dat").read_text())
                 / PRECISION_CONST
             )
             assert np.allclose(lammps_pe, lammps_totalatomicenergy)
             assert np.allclose(
                 structure.get_potential_energy(),
                 lammps_pe,
-                atol=1e-6,
+                atol=tol,
+                rtol=tol,
             )
             # in `metal` units, pressure/stress has units bars
             # so need to convert
             lammps_stress = np.fromstring(
-                Path(tmpdir + f"/stress.dat").read_text(), sep=" ", dtype=np.float64
+                Path(tmpdir + "/stress.dat").read_text(), sep=" ", dtype=np.float64
             ) * (ase.units.bar / PRECISION_CONST)
             # https://docs.lammps.org/compute_pressure.html
             # > The ordering of values in the symmetric pressure tensor is as follows: pxx, pyy, pzz, pxy, pxz, pyz.
@@ -306,8 +344,12 @@ def test_repro(deployed_model, kokkos: bool, openmp: bool):
                 # WITHOUT a sign change.  In `nequip`, we chose currently to follow the virial = -stress x volume
                 # convention => stress = -1/V * virial.  ASE does not change the sign of the virial, so we have
                 # to flip the sign from ASE for the comparison.
+                ase_stress = -structure.get_stress(voigt=False)
+                stress_err = np.max(np.abs(ase_stress - lammps_stress))
+                stol = tol * 20
                 assert np.allclose(
-                    -structure.get_stress(voigt=False),
+                    ase_stress,
                     lammps_stress,
-                    atol=1e-5,
-                )
+                    atol=stol,
+                    rtol=stol,
+                ), f"Stress max abs err: {stress_err:.8g} (tol={stol:.3g})\nASE stress: {ase_stress.flatten().tolist()}\nLAMMPS stress: {lammps_stress.flatten().tolist()}"
