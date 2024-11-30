@@ -73,6 +73,13 @@ sed -i "s/set(CMAKE_CXX_STANDARD 11)/set(CMAKE_CXX_STANDARD 17)/" $lammps_dir/cm
 # Add libtorch
 cat >> $lammps_dir/cmake/CMakeLists.txt << "EOF2"
 
+message(STATUS "<< NEQUIP flags >>")
+if(NEQUIP_AOT_COMPILE)
+  add_compile_definitions(NEQUIP_AOT_COMPILE)
+  message(STATUS "NEQUIP_AOT_COMPILE is enabled.")
+else()
+  message(STATUS "NEQUIP_AOT_COMPILE is disabled.")
+endif()
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")
