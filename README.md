@@ -130,6 +130,20 @@ make -j$(nproc)
 ```
 This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in in.script`. If you specify `-DCMAKE_INSTALL_PREFIX=/somewhere/in/$PATH` (the default is `$HOME/.local`), you can do `make install` and just run `lmp -in in.script`.
 
+
+
+### PyTorch 2 AOT Compilation
+To use PyTorch 2 ahead-of-time (AOT) compilation, one has to configure an additional compile-time flag. At compile-time, add
+```
+-DNEQUIP_AOT_COMPILE=ON
+```
+Look out for the following to check if cmake is configured as expected:
+```
+-- << NEQUIP flags >>
+-- NEQUIP_AOT_COMPILE is enabled/disabled.
+```
+These steps are necessary to run the pair styles with AOT compiled models (with the `.nequip.pt2` extension).
+
 ## FAQ
 
 1. Q: My simulation is immediately or bizzarely unstable
