@@ -30,7 +30,7 @@
 #include "atom_masks.h"
 #include "math_const.h"
 
-#include <pair_allegro_kokkos.h>
+#include <pair_nequip_allegro_kokkos.h>
 #include <torch/torch.h>
 #include <torch/script.h>
 
