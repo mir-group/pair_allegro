@@ -133,9 +133,6 @@ void PairAllegroKokkos<nequip_mode>::compute(int eflag_in, int vflag_in)
   // build short neighbor list
 
   const int max_neighs = d_neighbors.extent(1);
-  // TODO: check inum/ignum here
-  const int n_atoms = neighflag == FULL ? inum : inum;
-
 
 
   if(d_numneigh_short.extent(0) < inum){
