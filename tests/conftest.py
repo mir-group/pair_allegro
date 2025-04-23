@@ -45,7 +45,9 @@ if not HAS_OPENMP:
 
 COMPILE_MODES: Final[Dict[str, str]] = {
     "torchscript": "test.nequip.pth",
-    "aotinductor": "test.nequip.pt2",
+    # commented because it is nontrivial to get CI to test this
+    # because e.g. one might have to compile PyTorch from source
+    # "aotinductor": "test.nequip.pt2",
 }
 
 

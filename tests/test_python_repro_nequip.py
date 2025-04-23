@@ -27,11 +27,10 @@ import pytest
     # i.e. torchscript or aotinductor
     list(COMPILE_MODES.keys()),
 )
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize(
+    "device", ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
+)
 def test_repro(deployed_nequip_model, compile_mode: str, device: str):
-
-    if not torch.cuda.is_available() and device == "cuda":
-        pytest.skip("CUDA not detected, skipping `devive=cuda` tests")
 
     structure: ase.Atoms
     model_tmpdir, calc, structures, config, tol = deployed_nequip_model

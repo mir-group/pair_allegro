@@ -45,7 +45,9 @@ from conftest import (
     "n_rank",
     [1, 2, 4],
 )
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize(
+    "device", ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
+)
 def test_repro(
     deployed_allegro_model,
     kokkos: bool,
@@ -54,8 +56,6 @@ def test_repro(
     n_rank: int,
     device: str,
 ):
-    if not torch.cuda.is_available() and device == "cuda":
-        pytest.skip("CUDA not detected, skipping `devive=cuda` tests")
     structure: ase.Atoms
     model_tmpdir, calc, structures, config, tol = deployed_allegro_model
     model_file_path = model_tmpdir + f"/{device}_" + COMPILE_MODES[compile_mode]
