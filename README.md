@@ -1,25 +1,21 @@
-# `pair_allegro`: LAMMPS pair style for NequIP and Allegro
+# `pair_nequip` and `pair_allegro`: LAMMPS pair styles
 
-This pair style allows you to use Allegro models from the [`nequip`](https://github.com/mir-group/nequip) and [`allegro`](https://github.com/mir-group/allegro) packages in LAMMPS simulations. NequIP is a message-passing graph neural network limited to one MPI rank, while Allegro is a local model and thus supports parallelism, and so `pair_allegro` **supports MPI in LAMMPS**. It also supports OpenMP (better performance) or Kokkos (best performance) for accelerating the pair style.
+These pair styles allow you to use models from the [NequIP framework](https://github.com/mir-group/nequip) in LAMMPS simulations. This repository provides two pair styles: `pair_nequip` is for the NequIP message-passing GNN model, which is limited to one MPI rank; `pair_allegro` is for the strictly local Allegro model, which supports parallel execution and MPI in LAMMPS.
 
-For more details on Allegro itself, background, and the LAMMPS pair style please see the [`allegro`](https://github.com/mir-group/allegro) package and our paper:
-> *Learning Local Equivariant Representations for Large-Scale Atomistic Dynamics* <br/>
-> Albert Musaelian, Simon Batzner, Anders Johansson, Lixin Sun, Cameron J. Owen, Mordechai Kornbluth, Boris Kozinsky <br/>
-> https://www.nature.com/articles/s41467-023-36329-y <br/>
-and
-> *Scaling the leading accuracy of deep equivariant models to biomolecular simulations of realistic size* <br/>
-> Albert Musaelian, Anders Johansson, Simon Batzner, Boris Kozinsky <br/>
-> https://doi.org/10.1145/3581784.3627041 <br/>
+ - [Usage](#usage)
+ - [Installation](#installation)
+ - [References & citing](#references--citing)
+ - [FAQ](#faq)
+ - [Community, contact, questions, and contributing](#community-contact-questions-and-contributing)
 
-`pair_allegro` authors: **Anders Johansson**, Albert Musaelian.
 
-## Pre-requisites
+> [!IMPORTANT]
+> A [major backwards-incompatible update](./docs/guide/upgrading.md) to the `nequip` framework was released on April 23rd 2025 as version v0.7.0 including the updated pair styles here. The previous version of `pair_allegro` for use with older models can be found in this repository as version v0.6.0. The previous version of `pair_nequip` can be found in the [`pair_nequip` repository](https://github.com/mir-group/pair_nequip) as version v0.6.0.
 
-* PyTorch or LibTorch >= 1.11.0;  please note that at present we have only thoroughly tested 1.11 on NVIDIA GPUs (see [#311 for NequIP](https://github.com/mir-group/nequip/discussions/311#discussioncomment-5129513)) and 1.13 on AMD GPUs, but newer 2.x versions *may* also work. With newer versions, setting the environment variable `PYTORCH_JIT_USE_NNC_NOT_NVFUSER=1` sometimes helps.
+## Usage
+Before you can use a model in LAMMPS, you must compile it using `nequip-compile`. For more information, please see the [NequIP framework documentation](https://nequip.readthedocs.io). The output of `nequip-compile` should be a `.nequip.pth` or a `.nequip.pt2` file for the TorchScript and AOTI compilers, respectively.
 
-## Usage in LAMMPS
-
-First define the pair style,
+In your LAMMPS script, first define the pair style
 ```
 pair_style	nequip
 ```
@@ -27,78 +23,100 @@ for NequIP models and
 ```
 pair_style	allegro
 ```
-for Allegro models. Then specify the model with
+for Allegro models. Then specify the model file to use with
 ```
-pair_coeff	* * deployed.pth <NequIP/Allegro type name for LAMMPS type 1> <NequIP/Allegro type name for LAMMPS type 2> ...
+pair_coeff	* * my-compiled-model.nequip.pth/pt2 <model type name for LAMMPS type 1> <model type name for LAMMPS type 2> ...
 ```
-where `deployed.pth` is the filename of your trained, **deployed** model.
+where `my-compiled-model.nequip.pth/pt2` is the filename of your trained and **compiled** model, output from `nequip-compile`.
 
-The names after the model path `deployed.pth` indicate, in order, the names of the model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the NequIP/Allegro model!).
-The given names must be consistent with the names specified in the training YAML file in `chemical_symbol_to_type` or `type_names`. Typically, this will be the chemical symbol for each LAMMPS type.
+The names after the model file name indicate, in order, the names of the model's atom types to use for LAMMPS atom types 1, 2, and so on. The number of names given must be equal to the number of atom types in the LAMMPS configuration (not the NequIP/Allegro model!).
+The given names must be consistent with the model's type names that were specified in its training YAML file in the `type_names` option (under `training_module.model`). Typically, this will be the chemical symbol for each LAMMPS type.
 
+### Running with Kokkos
 To run with Kokkos (only supported for Allegro models), please see the [LAMMPS Kokkos documentation](https://docs.lammps.org/Speed_kokkos.html#running-on-gpus). Example:
 ```bash
 mpirun -np 8 lmp -sf kk -k on g 4 -pk kokkos newton on neigh full -in in.script
 ```
 to run on 2 nodes with 4 GPUs *each*.
 
-### Compute (currently only supported for Allegro models)
-We provide an experimental "compute" that allows you to extract custom quantities from Allegro models, such as [polarization](https://arxiv.org/abs/2403.17207). You can extract either global or per-atom properties with syntax along the lines of
-```
-compute polarization all allegro polarization 3
-compute polarizability all allegro polarizability 9
-compute borncharges all allegro/atom born_charge 9 1
-```
-
-The name after `allegro[/atom]` is attempted extracted from the dictionary that the Allegro model returns. The following number is the number of elements after flattening the output. In the examples above, polarization is a 3-element global vector, while polarizability and Born charges are global and per-atom 3x3 matrices, respectively.
-
-For per-atom quantities, the second number is a 1/0 flag indicating whether the properties should be reverse-communicated "Newton-style" like forces, which will depend on your property and the specifics of your implementation.
-
-
-*Note: For extracting multiple quantities, simply use multiple commands. The properties will be extracted from the same dictionary, without any recomputation.*
-
-*Note: The group flag should generally be `all`.*
-
-*Note: Global quantities are assumed extensive and summed across MPI ranks. Keep ghost atoms in mind when trying to think of whether this works for your property; for example, it does not work for Allegro's global energy if there are non-zero energy shifts, as these are also applied to ghost atoms.*
-
-## Building LAMMPS with this pair style
+## Installation
 
 ### Download LAMMPS
 ```bash
 git clone --depth=1 https://github.com/lammps/lammps
 ```
-or your preferred method.
-(`--depth=1` prevents the entire history of the LAMMPS repository from being downloaded.)
+or your preferred method (`--depth=1` prevents the entire history of the LAMMPS repository from being downloaded).
 
 ### Download this repository
 ```bash
-git clone https://github.com/mir-group/pair_allegro
+git clone --depth=1 https://github.com/mir-group/pair_nequip_allegro
 ```
 or by downloading a ZIP of the source.
 
 ### Patch LAMMPS
-From the `pair_allegro` directory, run:
+From the `pair_nequip_allegro` directory, run:
 ```bash
 ./patch_lammps.sh /path/to/lammps/
 ```
 
-### Libraries
+### Configure LAMMPS with CMake
 
-#### Libtorch
-If you have PyTorch installed and are **NOT** using Kokkos:
+For general information on building LAMMPS with CMake, see [the LAMMPS documentation](https://docs.lammps.org/Build_cmake.html).
+
+In your LAMMPS source directory, you will run something like:
 ```bash
 cd lammps
 mkdir build
 cd build
-cmake ../cmake -DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'`
+cmake ../cmake [options]
 ```
-If you don't have PyTorch installed **OR** are using Kokkos, you need to download LibTorch from the [PyTorch download page](https://pytorch.org/get-started/locally/). **Ensure you download the cxx11 ABI version if using Kokkos.** Unzip the downloaded file, then configure LAMMPS:
+The following subsections discuss options to include that are specific to `pair_nequip_allegro`. You may need to try to configure and build LAMMPS a number of times while revisiting the sections below.
+
+#### AOTI Compilation (recommended, significant performance gains)
+To use PyTorch 2 Ahead-of-Time Inductor (AOTI) compilation (described in [our paper](https://arxiv.org/abs/2504.16068)), you must configure an additional compile-time flag:
+```
+-DNEQUIP_AOT_COMPILE=ON
+```
+Look out for the following in the CMake output to confirm:
+```
+-- << NEQUIP flags >>
+-- NEQUIP_AOT_COMPILE is enabled/disabled.
+```
+These steps are necessary to run the pair styles with AOTI compiled models (those with the `.nequip.pt2` extension).
+
+#### `libtorch` (required)
+
+##### without Kokkos
+If you have PyTorch installed in your Python environment:
 ```bash
-cd lammps
-mkdir build
-cd build
-cmake ../cmake -DCMAKE_PREFIX_PATH=/path/to/libtorch
+-DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'`
 ```
+
+If you don't have PyTorch installed and will not use AOTI, you can download `libtorch` from the [PyTorch download page](https://pytorch.org/get-started/locally/). Unzip the downloaded file, then configure LAMMPS:
+```bash
+-DCMAKE_PREFIX_PATH=/path/to/unzipped/libtorch
+```
+
+##### with Kokkos
+If you have PyTorch installed, run the following command:
+```bash
+python -c "import torch; print(torch._C._GLIBCXX_USE_CXX11_ABI)"
+```
+If it returns `True`, and use
+```bash
+-DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'`
+```
+
+If it returns `False`, first try to use the `libtorch` from the [PyTorch download page](https://pytorch.org/get-started/locally/). **Ensure that you download a `cxx11 abi` version.** Unzip the downloaded file, and use:
+```bash
+-DCMAKE_PREFIX_PATH=/path/to/unzipped/libtorch
+```
+
+If you are using AOTI compilation, the pre-built `libtorch` may fail to work. In this case, try installing and building all of PyTorch from source in a new Python environment **using the ABI11 flags**. Then only use that Python environment to run `nequip-compile` and to build LAMMPS using:
+```bash
+-DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'`
+```
+The command at the top of this section should return `True` in this new Python environment.
 
 #### MKL
 PyTorch's CMake will look for MKL automatically for no reason. If it cannot find it (`MKL_INCLUDE_DIR` is not found), you can set it to some existing path, e.g.
@@ -109,12 +127,9 @@ PyTorch's CMake will look for MKL automatically for no reason. If it cannot find
 #### CUDA
 CMake will look for CUDA and cuDNN. You may have to explicitly provide the path for your CUDA installation (e.g. `-DCUDA_TOOLKIT_ROOT_DIR=/usr/lib/cuda/`).
 
-Note that the CUDA that comes with PyTorch when installed with `conda` (the `cudatoolkit` package) is usually insufficient (see [here](https://github.com/pytorch/extension-cpp/issues/26), for example) and you may have to install full CUDA seperately. A minor version mismatch between the available full CUDA version and the version of `cudatoolkit` is usually *not* a problem, as long as the system CUDA is equal or newer. (For example, PyTorch's requested `cudatoolkit==11.3` with a system CUDA of 11.4 works, but a system CUDA 11.1 will likely fail.) cuDNN is also required by PyTorch.
+Note that the CUDA that comes with PyTorch when installed with `conda` is insufficient and you may have to install full CUDA seperately. A minor version mismatch between the available CUDA version and PyTorch's CUDA version is usually *not* a problem, as long as the system CUDA's minor version is the same or newer. cuDNN is also required by PyTorch.
 
-#### With OpenMP (optional, better performance)
-`pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style, by setting `OMP_NUM_THREADS` and using the [LAMMPS OpenMP package](https://docs.lammps.org/Speed_omp.html).
-
-#### With Kokkos (GPU-resident, optional, best performance, most reliable)
+#### Kokkos (recommended, best GPU performance and most reliable)
 `pair_allegro` supports the use of Kokkos to accelerate the pair style on the GPU and avoid host-GPU transfers.
 `pair_allegro` supports two setups for Kokkos: pair_style and model both on CPU, or both on GPU. Please ensure you build LAMMPS with the appropriate Kokkos backends enabled for your usecase. For example, to use CUDA GPUs, add:
 ```
@@ -122,50 +137,50 @@ Note that the CUDA that comes with PyTorch when installed with `conda` (the `cud
 ```
 to your `cmake` command. See the [LAMMPS documentation](https://docs.lammps.org/Speed_kokkos.html) for more build options and how to correctly run LAMMPS with Kokkos.
 
-*Note: Kokkos support is currently only available for Allegro models.*
+Kokkos support is currently only available for `pair_style allegro`.
+
+#### OpenMP (optional, better performance, mutually exclusive with Kokkos)
+`pair_allegro` supports the use of OpenMP to accelerate certain parts of the pair style, by setting `OMP_NUM_THREADS` and using the [LAMMPS OpenMP package](https://docs.lammps.org/Speed_omp.html).
+OpenMP and Kokkos are mutually exclusive.
+
+OpenMP supports both `pair_style nequip` and `pair_style allegro`.
 
 ### Building LAMMPS
 ```bash
 make -j$(nproc)
 ```
-This gives `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in in.script`. If you specify `-DCMAKE_INSTALL_PREFIX=/somewhere/in/$PATH` (the default is `$HOME/.local`), you can do `make install` and just run `lmp -in in.script`.
+This produces an executable `lammps/build/lmp`, which can be run as usual with `/path/to/lmp -in in.script`. The [LAMMPS documentation](https://docs.lammps.org/Build_cmake.html) has more details.
 
 
+## References & citing
 
-### PyTorch 2 AOT Compilation
-To use PyTorch 2 ahead-of-time (AOT) compilation, one has to configure an additional compile-time flag. At compile-time, add
-```
--DNEQUIP_AOT_COMPILE=ON
-```
-Look out for the following to check if cmake is configured as expected:
-```
--- << NEQUIP flags >>
--- NEQUIP_AOT_COMPILE is enabled/disabled.
-```
-These steps are necessary to run the pair styles with AOT compiled models (with the `.nequip.pt2` extension).
+**Any and all use of this software, in whole or in part, should clearly acknowledge and link to this repository.**
+
+Please see the [`nequip`](https://github.com/mir-group/nequip?tab=readme-ov-file#references--citing) and [`allegro`](https://github.com/mir-group/allegro?tab=readme-ov-file#references--citing) repositories for relevant citations.
 
 ## FAQ
 
 1. Q: My simulation is immediately or bizzarely unstable
 
-   A: Please ensure that your mapping from LAMMPS atom types to NequIP atom types, specified in the `pair_coeff` line, is correct, and that the units are consistent between your training data and your LAMMPS simulation.
+   A: Please ensure that your mapping from LAMMPS atom types to NequIP framework atom types, specified in the `pair_coeff` line, is correct, and that the units are consistent between your training data and your LAMMPS simulation.
 2. Q: I get the following error:
    ```
     instance of 'c10::Error'
         what():  PytorchStreamReader failed locating file constants.pkl: file not found
    ```
 
-   A: Make sure you remembered to deploy (compile) your model using `nequip-deploy`, and that the path to the model given with `pair_coeff` points to a deployed model `.pth` file, **not** a file containing only weights like `best_model.pth`.
-3. Q: I get the following error:
-   ```
-    instance of 'c10::Error'
-        what():  isTuple()INTERNAL ASSERT FAILED
-   ```
+   A: Make sure you intended to use TorchScript and that you correctly compiled your model to TorchScript with `nequip-compile`.
 
-   A: We've seen this error occur when you try to load a TorchScript model deployed from PyTorch>1.11 in LAMMPS built against 1.11. Try redeploying your model (retraining not necessary) in a PyTorch 1.11 install.
-4. Q: I get the following error:
-    ```
-    Exception: Argument passed to at() was not in the map
-    ```
 
-    A: We now require models to have been trained with stress support, which is achieved by replacing `ForceOutput` with `StressForceOutput` in the training configuration. Note that you do not need to train on stress (though it may improve your potential, assuming your stress data is correct and converged). If you desperately wish to keep using a model without stress output, there are two options: 1) Remove lines that look like [these](https://github.com/mir-group/pair_allegro/blob/99036043e74376ac52993b5323f193dee3f4f401/pair_allegro_kokkos.cpp#L332-L343) in your version of `pair_allegro[_kokkos].cpp` 2) Redeploy the model with an updated config file, as described [here](https://github.com/mir-group/nequip/issues/69#issuecomment-1129273665).
+## Community, contact, questions, and contributing
+
+If you find a bug or have a proposal for a feature, please post it in the [Issues](https://github.com/mir-group/pair_nequip_allegro/issues).
+If you have a self-contained question or other discussion topic, try our [GitHub Discussions](https://github.com/mir-group/pair_nequip_allegro/discussions).
+
+**If your post is related to the NequIP software framework in general or the `allegro` extension package, please post in the issues or discussions on those repositories.** Discussions on this repository should be specific to the pair styles.
+
+Active users and interested developers are invited to join us on the NequIP community chat server, which is hosted on the excellent [Zulip](https://zulip.com/) software.
+Zulip is organized a little bit differently than chat software like Slack or Discord that you may be familiar with: please review [their introduction](https://zulip.com/help/introduction-to-topics) before posting.
+[Register for the NequIP community here](https://nequip.zulipchat.com).
+
+We can also be reached by email at allegro-nequip@g.harvard.edu.
