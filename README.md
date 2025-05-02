@@ -73,7 +73,7 @@ cmake ../cmake [options]
 The following subsections discuss options to include that are specific to `pair_nequip_allegro`. You may need to try to configure and build LAMMPS a number of times while revisiting the sections below.
 
 #### AOTI Compilation (recommended, significant performance gains)
-To use PyTorch 2 Ahead-of-Time Inductor (AOTI) compilation (described in [our paper](https://arxiv.org/abs/2504.16068)), you must configure an additional compile-time flag:
+To use PyTorch 2 Ahead-of-Time Inductor (AOTI) compilation (described in [our paper](https://arxiv.org/abs/2504.16068)), you must use **at least PyTorch 2.6.0** (and/or corresponding `libtorch`) and configure an additional compile-time flag:
 ```
 -DNEQUIP_AOT_COMPILE=ON
 ```
@@ -181,6 +181,6 @@ If you have a self-contained question or other discussion topic, try our [GitHub
 
 Active users and interested developers are invited to join us on the NequIP community chat server, which is hosted on the excellent [Zulip](https://zulip.com/) software.
 Zulip is organized a little bit differently than chat software like Slack or Discord that you may be familiar with: please review [their introduction](https://zulip.com/help/introduction-to-topics) before posting.
-[Register for the NequIP community here](https://nequip.zulipchat.com).
+[Fill out the interest form for the NequIP community here](https://forms.gle/mEuonVCHdsgTtLXy7).
 
 We can also be reached by email at allegro-nequip@g.harvard.edu.
