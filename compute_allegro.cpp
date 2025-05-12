@@ -64,6 +64,8 @@ ComputeAllegro<peratom>::ComputeAllegro(LAMMPS *lmp, int narg, char **arg) : Com
                      size_peratom_cols, newton);
   } else {
     vector_flag = 1;
+    //As stated in the README, we assume vector properties are extensive
+    extvector = 1;
     size_vector = std::atoi(arg[4]);
     if (size_vector <= 0) error->all(FLERR, "Incorrect vector length!");
     memory->create(vector, size_vector, "ComputeAllegro:vector");
