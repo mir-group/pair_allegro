@@ -84,15 +84,12 @@ training_module:
     type_names: ${model_type_names}
     r_max: ${cutoff_radius}
     # general model params
-    scalar_embed:
+    radial_chemical_embed:
       _target_: allegro.nn.TwoBodyBesselScalarEmbed
       num_bessels: 8
       bessel_trainable: false
       polynomial_cutoff_p: 6
-      two_body_embedding_dim: 32
-      two_body_mlp_hidden_layers_depth: 0
     l_max: 2
-    parity_setting: o3_full
     num_layers: 3
     num_scalar_features: 64
     num_tensor_features: 32
